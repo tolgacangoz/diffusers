@@ -44,6 +44,7 @@ write_basic_config()
 ```
 
 When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
 
 ### Dog toy example
 
@@ -375,18 +376,14 @@ After training, LoRA weights can be loaded very easily into the original pipelin
 load the original pipeline:
 
 ```python
-from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
-import torch
-
-pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-pipe.to("cuda")
+from diffusers import DiffusionPipeline
+pipe = DiffusionPipeline.from_pretrained("base-model-name").to("cuda")
 ```
 
-Next, we can load the adapter layers into the UNet with the [`load_attn_procs` function](https://huggingface.co/docs/diffusers/api/loaders#diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs).
+Next, we can load the adapter layers into the pipeline with the [`load_lora_weights` function](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters#lora).
 
 ```python
-pipe.unet.load_attn_procs("patrickvonplaten/lora_dreambooth_dog_example")
+pipe.load_lora_weights("path-to-the-lora-checkpoint")
 ```
 
 Finally, we can run the model in inference.
@@ -673,6 +670,8 @@ likely the learning rate can be increased with larger batch sizes.
 
 Using 8bit adam and a batch size of 4, the model can be trained in ~48 GB VRAM.
 
+`--validation_scheduler`: Set a particular scheduler via a string. We found that it is better to use the DDPMScheduler for validation when training DeepFloyd IF.
+
 ```sh
 export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
 
@@ -697,6 +696,7 @@ accelerate launch train_dreambooth.py \
   --use_8bit_adam \
   --set_grads_to_none \
   --skip_save_text_encoder \
+  --validation_scheduler DDPMScheduler \
   --push_to_hub
 ```
 
@@ -735,6 +735,7 @@ accelerate launch train_dreambooth.py \
   --text_encoder_use_attention_mask \
   --validation_images $VALIDATION_IMAGES \
   --class_labels_conditioning timesteps \
+  --validation_scheduler DDPMScheduler\
   --push_to_hub
 ```
 

@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 
 import inspect
 import unittest
+from importlib import import_module
 
 
 class DependencyTester(unittest.TestCase):
@@ -37,3 +38,13 @@ class DependencyTester(unittest.TestCase):
                     elif backend == "invisible_watermark":
                         backend = "invisible-watermark"
                     assert backend in deps, f"{backend} is not in the deps table!"
+
+    def test_pipeline_imports(self):
+        import diffusers
+        import diffusers.pipelines
+
+        all_classes = inspect.getmembers(diffusers, inspect.isclass)
+        for cls_name, cls_module in all_classes:
+            if hasattr(diffusers.pipelines, cls_name):
+                pipeline_folder_module = ".".join(str(cls_module.__module__).split(".")[:3])
+                _ = import_module(pipeline_folder_module, str(cls_name))

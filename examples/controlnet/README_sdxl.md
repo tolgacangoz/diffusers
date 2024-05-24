@@ -1,6 +1,6 @@
-# DreamBooth training example for Stable Diffusion XL (SDXL)
+# ControlNet training example for Stable Diffusion XL (SDXL)
 
-The `train_controlnet_sdxl.py` script shows how to implement the training procedure and adapt it for [Stable Diffusion XL](https://huggingface.co/papers/2307.01952).
+The `train_controlnet_sdxl.py` script shows how to implement the ControlNet training procedure and adapt it for [Stable Diffusion XL](https://huggingface.co/papers/2307.01952).
 
 ## Running locally with PyTorch
 
@@ -61,7 +61,7 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 Then run `huggingface-cli login` to log into your Hugging Face account. This is needed to be able to push the trained ControlNet parameters to Hugging Face Hub.
 
 ```bash
-export MODEL_DIR="stabilityai/stable-diffusion-xl-base-0.9"
+export MODEL_DIR="stabilityai/stable-diffusion-xl-base-1.0"
 export OUTPUT_DIR="path to save model"
 
 accelerate launch train_controlnet_sdxl.py \
@@ -98,7 +98,7 @@ from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, UniP
 from diffusers.utils import load_image
 import torch
 
-base_model_path = "stabilityai/stable-diffusion-xl-base-0.9"
+base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
 controlnet_path = "path to controlnet"
 
 controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
@@ -113,7 +113,7 @@ pipe.enable_xformers_memory_efficient_attention()
 # memory optimization.
 pipe.enable_model_cpu_offload()
 
-control_image = load_image("./conditioning_image_1.png")
+control_image = load_image("./conditioning_image_1.png").resize((1024, 1024))
 prompt = "pale golden rod circle with old lace background"
 
 # generate image
@@ -128,4 +128,14 @@ image.save("./output.png")
 
 ### Specifying a better VAE
 
-SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
+SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of an alternative VAE (such as [`madebyollin/sdxl-vae-fp16-fix`](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
+
+If you're using this VAE during training, you need to ensure you're using it during inference too. You do so by:
+
+```diff
++ vae = AutoencoderKL.from_pretrained(vae_path_or_repo_id, torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
+pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+    base_model_path, controlnet=controlnet, torch_dtype=torch.float16,
++   vae=vae,
+)

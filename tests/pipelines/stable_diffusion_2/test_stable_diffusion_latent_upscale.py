@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,8 +30,15 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_image,
+    load_numpy,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
@@ -148,7 +155,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
             "image": self.dummy_image.cpu(),
             "generator": generator,
             "num_inference_steps": 2,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -174,8 +181,8 @@ class StableDiffusionLatentUpscalePipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         super().test_attention_slicing_forward_pass(expected_max_diff=7e-3)
 
-    def test_cpu_offload_forward_pass(self):
-        super().test_cpu_offload_forward_pass(expected_max_diff=3e-3)
+    def test_sequential_cpu_offload_forward_pass(self):
+        super().test_sequential_cpu_offload_forward_pass(expected_max_diff=3e-3)
 
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)
@@ -202,6 +209,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
             "KDPM2DiscreteScheduler",
             "KDPM2AncestralDiscreteScheduler",
             "DPMSolverSDEScheduler",
+            "EDMEulerScheduler",
         ]
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -228,10 +236,18 @@ class StableDiffusionLatentUpscalePipelineFastTests(
 
         assert check_same_shape(outputs)
 
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=5e-1)
+
 
 @require_torch_gpu
 @slow
 class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

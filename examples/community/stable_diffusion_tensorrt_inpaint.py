@@ -1,5 +1,5 @@
 #
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 # SPDX-FileCopyrightText: Copyright (c) 1993-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -24,10 +24,11 @@ from typing import List, Optional, Union
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
-import PIL
+import PIL.Image
 import tensorrt as trt
 import torch
 from huggingface_hub import snapshot_download
+from huggingface_hub.utils import validate_hf_hub_args
 from onnx import shape_inference
 from polygraphy import cuda
 from polygraphy.backend.common import bytes_from_path
@@ -41,7 +42,7 @@ from polygraphy.backend.trt import (
     save_engine,
 )
 from polygraphy.backend.trt import util as trt_util
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import (
@@ -51,7 +52,7 @@ from diffusers.pipelines.stable_diffusion import (
 )
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint import prepare_mask_and_masked_image
 from diffusers.schedulers import DDIMScheduler
-from diffusers.utils import DIFFUSERS_CACHE, logging
+from diffusers.utils import logging
 
 
 """
@@ -710,6 +711,7 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
         scheduler: DDIMScheduler,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
+        image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
         stages=["clip", "unet", "vae", "vae_encoder"],
         image_height: int = 512,
@@ -725,7 +727,15 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
         timing_cache: str = "timing_cache",
     ):
         super().__init__(
-            vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
+            vae,
+            text_encoder,
+            tokenizer,
+            unet,
+            scheduler,
+            safety_checker=safety_checker,
+            feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
+            requires_safety_checker=requires_safety_checker,
         )
 
         self.vae.forward = self.vae.decode
@@ -770,12 +780,13 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
             self.models["vae_encoder"] = make_VAEEncoder(self.vae, **models_args)
 
     @classmethod
+    @validate_hf_hub_args
     def set_cached_folder(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
 
         cls.cached_folder = (
@@ -787,7 +798,7 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
             )
         )
@@ -823,14 +834,14 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
 
         return self
 
-    def __initialize_timesteps(self, timesteps, strength):
-        self.scheduler.set_timesteps(timesteps)
-        offset = self.scheduler.steps_offset if hasattr(self.scheduler, "steps_offset") else 0
-        init_timestep = int(timesteps * strength) + offset
-        init_timestep = min(init_timestep, timesteps)
-        t_start = max(timesteps - init_timestep + offset, 0)
-        timesteps = self.scheduler.timesteps[t_start:].to(self.torch_device)
-        return timesteps, t_start
+    def __initialize_timesteps(self, num_inference_steps, strength):
+        self.scheduler.set_timesteps(num_inference_steps)
+        offset = self.scheduler.config.steps_offset if hasattr(self.scheduler, "steps_offset") else 0
+        init_timestep = int(num_inference_steps * strength) + offset
+        init_timestep = min(init_timestep, num_inference_steps)
+        t_start = max(num_inference_steps - init_timestep + offset, 0)
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :].to(self.torch_device)
+        return timesteps, num_inference_steps - t_start
 
     def __preprocess_images(self, batch_size, images=()):
         init_images = []
@@ -951,9 +962,9 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        strength: float = 0.75,
+        image: Union[torch.Tensor, PIL.Image.Image] = None,
+        mask_image: Union[torch.Tensor, PIL.Image.Image] = None,
+        strength: float = 1.0,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -1000,7 +1011,7 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
         """
         self.generator = generator
         self.denoising_steps = num_inference_steps
-        self.guidance_scale = guidance_scale
+        self._guidance_scale = guidance_scale
 
         # Pre-compute latent input scales and linear multistep coefficients
         self.scheduler.set_timesteps(self.denoising_steps, device=self.torch_device)
@@ -1043,9 +1054,32 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
             latent_height = self.image_height // 8
             latent_width = self.image_width // 8
 
+            # Pre-process input images
+            mask, masked_image, init_image = self.__preprocess_images(
+                batch_size,
+                prepare_mask_and_masked_image(
+                    image,
+                    mask_image,
+                    self.image_height,
+                    self.image_width,
+                    return_image=True,
+                ),
+            )
+
+            mask = torch.nn.functional.interpolate(mask, size=(latent_height, latent_width))
+            mask = torch.cat([mask] * 2)
+
+            # Initialize timesteps
+            timesteps, t_start = self.__initialize_timesteps(self.denoising_steps, strength)
+
+            # at which timestep to set the initial noise (n.b. 50% if strength is 0.5)
+            latent_timestep = timesteps[:1].repeat(batch_size)
+            # create a boolean to check if the strength is set to 1. if so then initialise the latents with pure noise
+            is_strength_max = strength == 1.0
+
             # Pre-initialize latents
             num_channels_latents = self.vae.config.latent_channels
-            latents = self.prepare_latents(
+            latents_outputs = self.prepare_latents(
                 batch_size,
                 num_channels_latents,
                 self.image_height,
@@ -1053,16 +1087,12 @@ class TensorRTStableDiffusionInpaintPipeline(StableDiffusionInpaintPipeline):
                 torch.float32,
                 self.torch_device,
                 generator,
+                image=init_image,
+                timestep=latent_timestep,
+                is_strength_max=is_strength_max,
             )
 
-            # Pre-process input images
-            mask, masked_image = self.__preprocess_images(batch_size, prepare_mask_and_masked_image(image, mask_image))
-            # print(mask)
-            mask = torch.nn.functional.interpolate(mask, size=(latent_height, latent_width))
-            mask = torch.cat([mask] * 2)
-
-            # Initialize timesteps
-            timesteps, t_start = self.__initialize_timesteps(self.denoising_steps, strength)
+            latents = latents_outputs[0]
 
             # VAE encode masked image
             masked_latents = self.__encode_image(masked_image)

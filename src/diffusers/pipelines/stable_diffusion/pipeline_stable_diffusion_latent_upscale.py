@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,16 +16,18 @@ import warnings
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...loaders import FromSingleFileMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import EulerDiscreteScheduler
-from ...utils import logging, randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...utils import deprecate, logging
+from ...utils.torch_utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, StableDiffusionMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -58,12 +60,15 @@ def preprocess(image):
     return image
 
 
-class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
+class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMixin, FromSingleFileMixin):
     r"""
     Pipeline for upscaling Stable Diffusion output image resolution by a factor of 2.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
+
+    The pipeline also inherits the following loading methods:
+        - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -77,6 +82,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             A [`EulerDiscreteScheduler`] to be used in combination with `unet` to denoise the encoded image latents.
     """
+
+    model_cpu_offload_seq = "text_encoder->unet->vae"
 
     def __init__(
         self,
@@ -190,11 +197,9 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        warnings.warn(
-            "The decode_latents method is deprecated and will be removed in a future version. Please"
-            " use VaeImageProcessor instead",
-            FutureWarning,
-        )
+        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
+        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
+
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
@@ -216,7 +221,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             )
 
         # verify batch size of prompt and image are same if image is a list or tensor
-        if isinstance(image, list) or isinstance(image, torch.Tensor):
+        if isinstance(image, (list, torch.Tensor)):
             if isinstance(prompt, str):
                 batch_size = 1
             else:
@@ -257,22 +262,15 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        image: Union[
-            torch.FloatTensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
-        ] = None,
+        image: PipelineImageInput = None,
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
     ):
         r"""
@@ -281,7 +279,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide image upscaling.
-            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image` or tensor representing an image batch to be upscaled. If it's a tensor, it can be either a
                 latent output from a Stable Diffusion model or an image tensor in the range `[-1, 1]`. It is considered
                 a `latent` if `image.shape[1]` is `4`; otherwise, it is considered to be an image representation and
@@ -301,7 +299,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
@@ -312,7 +310,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.
@@ -479,7 +477,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
@@ -487,6 +486,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             image = latents
 
         image = self.image_processor.postprocess(image, output_type=output_type)
+
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image,)

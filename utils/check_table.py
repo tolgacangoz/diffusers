@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -73,7 +73,7 @@ diffusers_module = spec.loader.load_module()
 
 # Thanks to https://stackoverflow.com/questions/29916065/how-to-do-camelcase-split-in-python
 def camel_case_split(identifier):
-    "Split a camelcased `identifier` into words."
+    """Split a camelcased `identifier` into words."""
     matches = re.finditer(".+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)", identifier)
     return [m.group(0) for m in matches]
 
@@ -161,7 +161,7 @@ def get_model_table_from_auto_modules():
 def check_model_table(overwrite=False):
     """Check the model table in the index.rst is consistent with the state of the lib and maybe `overwrite`."""
     current_table, start_index, end_index, lines = _find_text_in_file(
-        filename=os.path.join(PATH_TO_DOCS, "index.mdx"),
+        filename=os.path.join(PATH_TO_DOCS, "index.md"),
         start_prompt="<!--This table is updated automatically from the auto modules",
         end_prompt="<!-- End table-->",
     )
@@ -169,11 +169,11 @@ def check_model_table(overwrite=False):
 
     if current_table != new_table:
         if overwrite:
-            with open(os.path.join(PATH_TO_DOCS, "index.mdx"), "w", encoding="utf-8", newline="\n") as f:
+            with open(os.path.join(PATH_TO_DOCS, "index.md"), "w", encoding="utf-8", newline="\n") as f:
                 f.writelines(lines[:start_index] + [new_table] + lines[end_index:])
         else:
             raise ValueError(
-                "The model table in the `index.mdx` has not been updated. Run `make fix-copies` to fix this."
+                "The model table in the `index.md` has not been updated. Run `make fix-copies` to fix this."
             )
 
 

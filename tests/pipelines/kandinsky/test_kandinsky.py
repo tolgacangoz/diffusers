@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,8 +23,14 @@ from transformers import XLMRobertaTokenizerFast
 
 from diffusers import DDIMScheduler, KandinskyPipeline, KandinskyPriorPipeline, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
-from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_numpy,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
@@ -32,30 +38,7 @@ from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_diffe
 enable_full_determinism()
 
 
-class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = KandinskyPipeline
-    params = [
-        "prompt",
-        "image_embeds",
-        "negative_image_embeds",
-    ]
-    batch_params = ["prompt", "negative_prompt", "image_embeds", "negative_image_embeds"]
-    required_optional_params = [
-        "generator",
-        "height",
-        "width",
-        "latents",
-        "guidance_scale",
-        "negative_prompt",
-        "num_inference_steps",
-        "return_dict",
-        "guidance_scale",
-        "num_images_per_prompt",
-        "output_type",
-        "return_dict",
-    ]
-    test_xformers_attention = False
-
+class Dummies:
     @property
     def text_embedder_hidden_size(self):
         return 32
@@ -74,7 +57,7 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @property
     def cross_attention_dim(self):
-        return 100
+        return 32
 
     @property
     def dummy_tokenizer(self):
@@ -196,6 +179,39 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
+
+class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = KandinskyPipeline
+    params = [
+        "prompt",
+        "image_embeds",
+        "negative_image_embeds",
+    ]
+    batch_params = ["prompt", "negative_prompt", "image_embeds", "negative_image_embeds"]
+    required_optional_params = [
+        "generator",
+        "height",
+        "width",
+        "latents",
+        "guidance_scale",
+        "negative_prompt",
+        "num_inference_steps",
+        "return_dict",
+        "guidance_scale",
+        "num_images_per_prompt",
+        "output_type",
+        "return_dict",
+    ]
+    test_xformers_attention = False
+
+    def get_dummy_components(self):
+        dummy = Dummies()
+        return dummy.get_dummy_components()
+
+    def get_dummy_inputs(self, device, seed=0):
+        dummy = Dummies()
+        return dummy.get_dummy_inputs(device=device, seed=seed)
+
     def test_kandinsky(self):
         device = "cpu"
 
@@ -219,9 +235,7 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.328663, 1.0, 0.23216873, 1.0, 0.92717564, 0.4639046, 0.96894777, 0.31713378, 0.6293953]
-        )
+        expected_slice = np.array([1.0000, 1.0000, 0.2766, 1.0000, 0.5447, 0.1737, 1.0000, 0.4316, 0.9024])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -261,6 +275,12 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @slow
 @require_torch_gpu
 class KandinskyPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -279,7 +299,7 @@ class KandinskyPipelineIntegrationTests(unittest.TestCase):
         pipe_prior.to(torch_device)
 
         pipeline = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
-        pipeline = pipeline.to(torch_device)
+        pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
         prompt = "red cat, 4k photo"
