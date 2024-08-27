@@ -8,3 +8,5 @@ build:
     - command: "echo 'hello world'"
       description: "This is an example command, replace it with your own."
 
+pr_review:
+  auto_review_draft: true
