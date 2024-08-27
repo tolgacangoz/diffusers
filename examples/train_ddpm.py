@@ -39,7 +39,9 @@ def main(args):
         os.makedirs(args.output_dir, exist_ok=True)
 
     # Initialize model and scheduler
-    unet = ...  # Initialize UNet model
+    from diffusers import UNet2DConditionModel
+
+    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path)
     scheduler = DDPMScheduler()
     model = DDPMModel(unet=unet, scheduler=scheduler)
 
