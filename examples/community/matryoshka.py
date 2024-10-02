@@ -3951,6 +3951,9 @@ class MatryoshkaPipeline(
 
                 return trie, trie_key_scores, eos, bos, pad
 
+            max_caption_length = 512
+            max_token_length = 128
+            padding_token = "<pad>"
             class Tokenizer:
                 def __init__(self, token_file):
                     (
@@ -3984,9 +3987,6 @@ class MatryoshkaPipeline(
             mlx_tokenizer = mlx.data.core.Tokenizer(
                 tokenizer._trie, ignore_unk=True, trie_key_scores=tokenizer.trie_key_scores
             )
-            max_caption_length = 512
-            max_token_length = 128
-            padding_token = "<pad>"
 
             d = prompt[: max_caption_length]
             d = " " + d  # Prepad caption with space (or mlx tokenizes wrongly)
