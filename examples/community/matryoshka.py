@@ -3906,34 +3906,117 @@ class MatryoshkaPipeline(
 
         if prompt_embeds is None:
             # textual inversion: process multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+            # if isinstance(self, TextualInversionLoaderMixin):
+            #     prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
-            text_inputs = self.tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
+            # text_inputs = self.tokenizer(
+            #     prompt,
+            #     padding="max_length",
+            #     max_length=self.tokenizer.model_max_length,
+            #     truncation=True,
+            #     return_tensors="pt",
+            # )
+            import mlx
+            from mlx.data.core import CharTrie
+
+            def read_dictionary(token_file):
+                trie_key_scores = []
+                trie = CharTrie()
+
+                f = open(token_file, "rb")
+                sep = "\u2581".encode()
+
+                max_score = 0
+                for line in f:
+                    line = line.rstrip()
+                    token, score = line.split(b"\t")
+                    score = -float(score)
+
+                    token = token.replace(sep, b" ")
+                    if trie.search(token):
+                        raise RuntimeError(b"token " + token + b" already exists")
+                    trie.insert(token)
+                    trie_key_scores.append(score)
+                    max_score = max(max_score, score)
+
+                eos, bos, pad = -1, -1, -1
+                for i in range(trie.num_keys()):
+                    key = "".join(trie.key(i))
+                    if key == "</s>":
+                        eos = i
+                    if key == "<unk>":
+                        bos = i
+                    if key == "<pad>":
+                        pad = i
+
+                return trie, trie_key_scores, eos, bos, pad
+
+            class Tokenizer:
+                def __init__(self, token_file):
+                    (
+                        self._trie,
+                        self._trie_key_scores,
+                        self.eos,
+                        self.bos,
+                        self.pad,
+                    ) = read_dictionary(token_file)
+                    self.vocab_size = self._trie.num_keys()
+
+                @property
+                def trie(self):
+                    return self._trie
+
+                @property
+                def trie_key_scores(self):
+                    return self._trie_key_scores
+
+                def tokens2text(self, tokens):
+                    return "".join([self._trie.key_string(tok) for tok in tokens])
+
+                def token_id(self, token):
+                    node = self._trie.search(token)
+                    if node is None:
+                        raise ValueError(f"token: {token} not found in vocab.")
+                    return node.id
+
+            tokenizer = Tokenizer("/home/cosmos/Downloads/t5.vocab.txt")
+
+            mlx_tokenizer = mlx.data.core.Tokenizer(
+                tokenizer._trie, ignore_unk=True, trie_key_scores=tokenizer.trie_key_scores
             )
-            text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+            max_caption_length = 512
+            max_token_length = 128
+            padding_token = "<pad>"
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
-                removed_text = self.tokenizer.batch_decode(
-                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
-                )
-                logger.warning(
-                    "The following part of your input was truncated because CLIP can only handle sequences up to"
-                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-                )
+            d = prompt[: max_caption_length]
+            d = " " + d  # Prepad caption with space (or mlx tokenizes wrongly)
+            tokens = mlx_tokenizer.tokenize_shortest(d)
+            tokens = tokens + [tokenizer.eos]  # Append tokenization with eos symbol
+            if len(tokens) < max_token_length:
+                pad_length = max_token_length - len(tokens)
+                tokens = tokens + [tokenizer.token_id(padding_token)] * pad_length
+            max_len = min(len(tokens), max_token_length)
+            text_input_ids = torch.tensor(tokens[: max_len]).reshape(1, -1)
+            # text_input_ids = text_inputs.input_ids
+            # untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = text_inputs.attention_mask.to(device)
-            else:
-                attention_mask = None
+            # if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+            #     text_input_ids, untruncated_ids
+            # ):
+            #     removed_text = self.tokenizer.batch_decode(
+            #         untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
+            #     )
+            #     logger.warning(
+            #         "The following part of your input was truncated because CLIP can only handle sequences up to"
+            #         f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            #     )
+
+            # if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            #     attention_mask = text_inputs.attention_mask.to(device)
+            # else:
+            #     attention_mask = None
+            PAD_TOKEN = tokenizer.token_id(padding_token)
+            attention_mask = (text_input_ids != PAD_TOKEN).float()
 
             if clip_skip is None:
                 prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
@@ -3988,25 +4071,36 @@ class MatryoshkaPipeline(
                 uncond_tokens = negative_prompt
 
             # textual inversion: process multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
+            # if isinstance(self, TextualInversionLoaderMixin):
+            #     uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
-            uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
+            # uncond_input = self.tokenizer(
+            #     uncond_tokens,
+            #     padding="max_length",
+            #     max_length=max_length,
+            #     truncation=True,
+            #     return_tensors="pt",
+            # )
+            d = uncond_tokens[0][: max_caption_length]
+            d = " " + d
+            tokens = mlx_tokenizer.tokenize_shortest(d)
+            tokens = tokens + [tokenizer.eos]
+            if len(tokens) < max_token_length:
+                pad_length = max_token_length - len(tokens)
+                tokens = tokens + [tokenizer.token_id(padding_token)] * pad_length
+            max_len = min(len(tokens), max_token_length)
+            uncond_input_ids = torch.tensor(tokens[: max_len]).reshape(1, -1)
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = uncond_input.attention_mask.to(device)
-            else:
-                attention_mask = None
+            # if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            #     attention_mask = uncond_input_ids.attention_mask.to(device)
+            # else:
+            #     attention_mask = None
+            PAD_TOKEN = tokenizer.token_id(padding_token)
+            attention_mask = (uncond_input_ids != PAD_TOKEN).float()
 
             negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device),
+                uncond_input_ids.to(device),
                 attention_mask=attention_mask,
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
@@ -4198,7 +4292,7 @@ class MatryoshkaPipeline(
             )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(shape, generator=torch.manual_seed(0), device=device, dtype=dtype)
             if scales is not None:
                 out = [latents]
                 for s in scales[1:]:
