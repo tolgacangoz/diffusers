@@ -4017,7 +4017,7 @@ class MatryoshkaPipeline(
             # else:
             #     attention_mask = None
             PAD_TOKEN = tokenizer.token_id(padding_token)
-            attention_mask = (text_input_ids != PAD_TOKEN).float()
+            attention_mask = (text_input_ids != PAD_TOKEN).float().to(device)
 
             if clip_skip is None:
                 prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
@@ -4098,7 +4098,7 @@ class MatryoshkaPipeline(
             # else:
             #     attention_mask = None
             PAD_TOKEN = tokenizer.token_id(padding_token)
-            attention_mask = (uncond_input_ids != PAD_TOKEN).float()
+            attention_mask = (uncond_input_ids != PAD_TOKEN).float().to(device)
 
             negative_prompt_embeds = self.text_encoder(
                 uncond_input_ids.to(device),
