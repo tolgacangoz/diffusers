@@ -160,7 +160,7 @@ class Tokenizer:
             raise ValueError(f"token: {token} not found in vocab.")
         return node.id
 
-tokenizer = Tokenizer("tokenizer/t5.vocab.txt")
+tokenizer = Tokenizer("/kaggle/input/t5-vocab/t5.vocab.txt")
 
 mlx_tokenizer = mlx.data.core.Tokenizer(
     tokenizer._trie, ignore_unk=True, trie_key_scores=tokenizer.trie_key_scores
