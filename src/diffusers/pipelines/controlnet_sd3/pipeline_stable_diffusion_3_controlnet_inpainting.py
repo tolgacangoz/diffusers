@@ -716,6 +716,43 @@ class StableDiffusion3ControlNetInpaintingPipeline(
 
         return latents
 
+    def prepare_image(
+        self,
+        image,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+        guess_mode=False,
+    ):
+        if isinstance(image, torch.Tensor):
+            pass
+        else:
+            image = self.image_processor.preprocess(image, height=height, width=width)
+
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+
+        image = image.to(device=device, dtype=dtype)
+
+        if do_classifier_free_guidance and not guess_mode:
+            image = torch.cat([image] * 2)
+
+        image = self.vae.encode(image).latent_dist.sample()
+        image = (image - self.vae.config.vae_shift_factor) * self.vae.config.scaling_factor
+
+        return image
+
     def prepare_image_with_mask(
         self,
         image,
@@ -1136,19 +1173,32 @@ class StableDiffusion3ControlNetInpaintingPipeline(
         elif isinstance(self.controlnet, SD3MultiControlNetModel):
             control_images = []
 
-            for control_image_ in control_image:
-                control_image_ = self.prepare_image_with_mask(
-                    image=control_image_,
-                    mask=control_mask,
-                    width=width,
-                    height=height,
-                    batch_size=batch_size * num_images_per_prompt,
-                    num_images_per_prompt=num_images_per_prompt,
-                    device=device,
-                    dtype=dtype,
-                    do_classifier_free_guidance=self.do_classifier_free_guidance,
-                    guess_mode=False,
-                )
+            for i, control_image_ in enumerate(control_image):
+                if i != 0:
+                    control_image_ = self.prepare_image(
+                        image=control_image_,
+                        width=width,
+                        height=height,
+                        batch_size=batch_size * num_images_per_prompt,
+                        num_images_per_prompt=num_images_per_prompt,
+                        device=device,
+                        dtype=dtype,
+                        do_classifier_free_guidance=self.do_classifier_free_guidance,
+                        guess_mode=False,
+                    )
+                else:
+                    control_image_ = self.prepare_image_with_mask(
+                        image=control_image_,
+                        mask=control_mask,
+                        width=width,
+                        height=height,
+                        batch_size=batch_size * num_images_per_prompt,
+                        num_images_per_prompt=num_images_per_prompt,
+                        device=device,
+                        dtype=dtype,
+                        do_classifier_free_guidance=self.do_classifier_free_guidance,
+                        guess_mode=False,
+                    )
                 control_images.append(control_image_)
 
             control_image = control_images
