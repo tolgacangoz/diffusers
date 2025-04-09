@@ -727,6 +727,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(
         dtype,
         do_classifier_free_guidance=False,
         guess_mode=False,
+        vae_shift_factor=None,
     ):
         if isinstance(image, torch.Tensor):
             pass
@@ -749,7 +750,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(
             image = torch.cat([image] * 2)
 
         image = self.vae.encode(image).latent_dist.sample()
-        image = (image - self.vae.config.vae_shift_factor) * self.vae.config.scaling_factor
+        image = (image - vae_shift_factor) * self.vae.config.scaling_factor
 
         return image
 
@@ -1078,6 +1079,12 @@ class StableDiffusion3ControlNetInpaintingPipeline(
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
 
+        controlnet_config = (
+            self.controlnet.config
+            if isinstance(self.controlnet, SD3ControlNetModel)
+            else self.controlnet.nets[0].config
+        )
+
         # align format for control guidance
         if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
             control_guidance_start = len(control_guidance_end) * [control_guidance_start]
@@ -1152,6 +1159,11 @@ class StableDiffusion3ControlNetInpaintingPipeline(
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
         # 3. Prepare control image
+        if controlnet_config.force_zeros_for_pooled_projection:
+            # instantx sd3 controlnet does not apply shift factor
+            vae_shift_factor = 0
+        else:
+            vae_shift_factor = self.vae.config.shift_factor
         if isinstance(self.controlnet, SD3ControlNetModel):
             control_image = self.prepare_image_with_mask(
                 image=control_image,
@@ -1185,6 +1197,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(
                         dtype=dtype,
                         do_classifier_free_guidance=self.do_classifier_free_guidance,
                         guess_mode=False,
+                        vae_shift_factor=vae_shift_factor,
                     )
                 else:
                     control_image_ = self.prepare_image_with_mask(
