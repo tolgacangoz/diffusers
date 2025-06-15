@@ -140,7 +140,13 @@ class CogVideoXCausalConv3d(nn.Module):
         if self.pad_mode == "replicate":
             conv_cache = None
         else:
-            conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
+            # Memory optimization: Only cache if needed and use detach() instead of clone()
+            # to avoid accumulating gradients and reduce memory consumption.
+            # clone() was causing significant memory growth with increasing frame counts.
+            if self.time_kernel_size > 1:
+                conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].detach()
+            else:
+                conv_cache = None
 
         output = self.conv(inputs)
         return output, conv_cache
@@ -1220,6 +1226,18 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             z_intermediate, conv_cache = self.decoder(z_intermediate, conv_cache=conv_cache)
             dec.append(z_intermediate)
 
+            # Clear intermediate tensors to free memory
+            del z_intermediate
+            if i < num_batches - 1:  # Keep conv_cache for the next iteration except for the last one
+                # Ensure conv_cache doesn't require grad to save memory
+                if conv_cache is not None and isinstance(conv_cache, dict):
+                    for key in list(conv_cache.keys()):
+                        if isinstance(conv_cache[key], torch.Tensor):
+                            conv_cache[key] = conv_cache[key].detach()
+
+        # Clear conv_cache after the loop
+        del conv_cache
+
         dec = torch.cat(dec, dim=2)
 
         if not return_dict:
@@ -1401,6 +1419,16 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                         tile = self.post_quant_conv(tile)
                     tile, conv_cache = self.decoder(tile, conv_cache=conv_cache)
                     time.append(tile)
+
+                    # Ensure conv_cache doesn't accumulate gradients
+                    if k < num_batches - 1 and conv_cache is not None and isinstance(conv_cache, dict):
+                        for key in list(conv_cache.keys()):
+                            if isinstance(conv_cache[key], torch.Tensor):
+                                conv_cache[key] = conv_cache[key].detach()
+
+                # Clear conv_cache after processing this tile
+                del conv_cache
+                conv_cache = None
 
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
