@@ -123,11 +123,10 @@ class SkyReelsV2AttnProcessor:
             query = apply_rotary_emb(query, *rotary_emb)
             key = apply_rotary_emb(key, *rotary_emb)
 
-        if self._attention_backend == "_native_flash-flash_varlen":
-            if not self.is_cross_attention:
-                self._attention_backend = "_native_flash"
-            else:
-                self._attention_backend = "flash_varlen"
+        if not self.is_cross_attention:
+            attention_backend = "_native_flash"
+        else:
+            attention_backend = "flash_varlen"
 
         # I2V task
         hidden_states_img = None
@@ -145,7 +144,7 @@ class SkyReelsV2AttnProcessor:
                 attn_mask=None,
                 dropout_p=0.0,
                 is_causal=False,
-                backend=self._attention_backend,
+                backend=attention_backend,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
@@ -157,7 +156,7 @@ class SkyReelsV2AttnProcessor:
             attn_mask=attention_mask,
             dropout_p=0.0,
             is_causal=False,
-            backend=self._attention_backend,
+            backend=attention_backend,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
