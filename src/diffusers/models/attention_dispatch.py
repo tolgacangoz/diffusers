@@ -873,6 +873,7 @@ def _native_flash_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
@@ -884,7 +885,7 @@ def _native_flash_attention(
             query=query,
             key=key,
             value=value,
-            attn_mask=None,  # not supported
+            attn_mask=attn_mask,
             dropout_p=dropout_p,
             is_causal=is_causal,
             scale=scale,
