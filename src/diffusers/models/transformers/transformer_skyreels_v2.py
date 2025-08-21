@@ -124,7 +124,7 @@ class SkyReelsV2AttnProcessor:
             key = apply_rotary_emb(key, *rotary_emb)
 
         if not attn.is_cross_attention:
-            attention_backend = "flash"
+            attention_backend = None
         else:
             attention_backend = "flash_varlen"
 
