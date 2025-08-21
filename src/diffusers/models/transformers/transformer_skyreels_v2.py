@@ -464,7 +464,7 @@ class SkyReelsV2TransformerBlock(nn.Module):
             cross_attention_dim_head=dim // num_heads,
             processor=SkyReelsV2AttnProcessor(),
         )
-        self.attn2.set_attention_backend("flash_varlen")
+        self.attn2.set_attention_backend("flash")
         self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
         # 3. Feed-forward
