@@ -14,6 +14,7 @@
 
 import math
 from typing import Any, Dict, Optional, Tuple, Union
+import flash_attn
 
 import torch
 import torch.nn as nn
@@ -72,6 +73,87 @@ def _get_added_kv_projections(attn: "SkyReelsV2Attention", encoder_hidden_states
     return key_img, value_img
 
 
+def flash_attention(
+    q,
+    k,
+    v,
+    q_lens=None,
+    k_lens=None,
+    dropout_p=0.0,
+    softmax_scale=None,
+    q_scale=None,
+    causal=False,
+    window_size=(-1, -1),
+    deterministic=False,
+    dtype=torch.bfloat16,
+    version=None,
+):
+    """
+    q:              [B, Lq, Nq, C1].
+    k:              [B, Lk, Nk, C1].
+    v:              [B, Lk, Nk, C2]. Nq must be divisible by Nk.
+    q_lens:         [B].
+    k_lens:         [B].
+    dropout_p:      float. Dropout probability.
+    softmax_scale:  float. The scaling of QK^T before applying softmax.
+    causal:         bool. Whether to apply causal attention mask.
+    window_size:    (left right). If not (-1, -1), apply sliding window local attention.
+    deterministic:  bool. If True, slightly slower and uses more memory.
+    dtype:          torch.dtype. Apply when dtype of q/k/v is not float16/bfloat16.
+    """
+    half_dtypes = (torch.float16, torch.bfloat16)
+    assert dtype in half_dtypes
+    assert q.device.type == "cuda" and q.size(-1) <= 256
+
+    # params
+    b, lq, lk, out_dtype = q.size(0), q.size(1), k.size(1), q.dtype
+
+    def half(x):
+        return x if x.dtype in half_dtypes else x.to(dtype)
+
+    # preprocess query
+
+    q = half(q.flatten(0, 1))
+    q_lens = torch.tensor([lq] * b, dtype=torch.int32).to(device=q.device, non_blocking=True)
+
+    # preprocess key, value
+
+    k = half(k.flatten(0, 1))
+    v = half(v.flatten(0, 1))
+    k_lens = torch.tensor([lk] * b, dtype=torch.int32).to(device=k.device, non_blocking=True)
+
+    q = q.to(v.dtype)
+    k = k.to(v.dtype)
+
+    if q_scale is not None:
+        q = q * q_scale
+
+    torch.cuda.nvtx.range_push(f"{list(q.shape)}-{list(k.shape)}-{list(v.shape)}-{q.dtype}-{k.dtype}-{v.dtype}")
+    # apply attention
+    x = flash_attn.flash_attn_varlen_func(
+        q=q,
+        k=k,
+        v=v,
+        cu_seqlens_q=torch.cat([q_lens.new_zeros([1]), q_lens])
+        .cumsum(0, dtype=torch.int32)
+        .to(q.device, non_blocking=True),
+        cu_seqlens_k=torch.cat([k_lens.new_zeros([1]), k_lens])
+        .cumsum(0, dtype=torch.int32)
+        .to(q.device, non_blocking=True),
+        max_seqlen_q=lq,
+        max_seqlen_k=lk,
+        dropout_p=dropout_p,
+        softmax_scale=softmax_scale,
+        causal=causal,
+        window_size=window_size,
+        deterministic=deterministic,
+    ).unflatten(0, (b, lq))
+    torch.cuda.nvtx.range_pop()
+
+    # output
+    return x
+
+
 class SkyReelsV2AttnProcessor:
     _attention_backend = None
 
@@ -123,11 +205,6 @@ class SkyReelsV2AttnProcessor:
             query = apply_rotary_emb(query, *rotary_emb)
             key = apply_rotary_emb(key, *rotary_emb)
 
-        if not attn.is_cross_attention:
-            attention_backend = None
-        else:
-            attention_backend = AttentionBackendName("flash_varlen")
-
         # I2V task
         hidden_states_img = None
         if encoder_hidden_states_img is not None:
@@ -137,27 +214,26 @@ class SkyReelsV2AttnProcessor:
             key_img = key_img.unflatten(2, (attn.heads, -1))
             value_img = value_img.unflatten(2, (attn.heads, -1))
 
-            hidden_states_img = dispatch_attention_fn(
-                query,
-                key_img,
-                value_img,
-                attn_mask=None,
-                dropout_p=0.0,
-                is_causal=False,
-                backend=attention_backend,
-            )
+            hidden_states_img = flash_attention(query, key_img, value_img)
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
 
-        hidden_states = dispatch_attention_fn(
-            query,
-            key,
-            value,
-            attn_mask=attention_mask,
-            dropout_p=0.0,
-            is_causal=False,
-            backend=attention_backend,
-        )
+        if attn.is_cross_attention:
+            hidden_states = flash_attention(
+                query,
+                key,
+                value,
+            )
+        else:
+            hidden_states = dispatch_attention_fn(
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
+                backend=self._attention_backend,
+            )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
 
