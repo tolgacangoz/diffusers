@@ -569,20 +569,20 @@ def _flash_varlen_attention(
         cu_seqlens_q = cu_seqlens_q.to(dtype=torch.int32, device=query.device)
         cu_seqlens_k = cu_seqlens_k.to(dtype=torch.int32, device=query.device)
 
-    key_valid, value_valid = [], []
-    for b in range(batch_size):
-        valid_len = seqlens_k[b]
-        key_valid.append(key[b, :valid_len])
-        value_valid.append(value[b, :valid_len])
+    # key_valid, value_valid = [], []
+    # for b in range(batch_size):
+    #     valid_len = seqlens_k[b]
+    #     key_valid.append(key[b, :valid_len])
+    #     value_valid.append(value[b, :valid_len])
 
-    query_packed = query.flatten(0, 1)
-    key_packed = torch.cat(key_valid, dim=0)
-    value_packed = torch.cat(value_valid, dim=0)
+    # query_packed = query.flatten(0, 1)
+    # key_packed = torch.cat(key_valid, dim=0)
+    # value_packed = torch.cat(value_valid, dim=0)
 
     out = flash_attn_varlen_func(
-        q=query_packed,
-        k=key_packed,
-        v=value_packed,
+        q=query.flatten(0, 1),
+        k=key.flatten(0, 1),
+        v=value.flatten(0, 1),
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_k=cu_seqlens_k,
         max_seqlen_q=max_seqlen_q,
