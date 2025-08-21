@@ -24,7 +24,7 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
-from ..attention_dispatch import dispatch_attention_fn
+from ..attention_dispatch import dispatch_attention_fn, AttentionBackendName
 from ..cache_utils import CacheMixin
 from ..embeddings import (
     PixArtAlphaTextProjection,
@@ -126,7 +126,7 @@ class SkyReelsV2AttnProcessor:
         if not attn.is_cross_attention:
             attention_backend = None
         else:
-            attention_backend = "flash_varlen"
+            attention_backend = AttentionBackendName("flash_varlen")
 
         # I2V task
         hidden_states_img = None
