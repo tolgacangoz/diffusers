@@ -319,10 +319,13 @@ class Magi1TextProjection(nn.Module):
     Projects caption embeddings.
     """
 
-    def __init__(self, in_features, hidden_size):
+    def __init__(self, in_features, hidden_size, adaln_dim=None):
         super().__init__()
+        # Cross-attention projection uses full hidden_size
         self.y_proj_xattn = nn.Sequential(nn.Linear(in_features, hidden_size, bias=True), nn.SiLU())
-        self.y_proj_adaln = nn.Linear(in_features, hidden_size, bias=True)
+        # Adaln projection uses reduced dimension if specified, otherwise full hidden_size
+        adaln_out_dim = adaln_dim if adaln_dim is not None else hidden_size
+        self.y_proj_adaln = nn.Linear(in_features, adaln_out_dim, bias=True)
 
     def forward(self, caption):
         caption_xattn = self.y_proj_xattn(caption)
@@ -364,8 +367,8 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         # For 4.5B: 3072 * 0.25 = 768
         time_embed_dim = int(dim * 0.25)  # cond_hidden_ratio = 0.25
         self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=time_embed_dim)
-        # Text embedder also uses reduced dimension like time embedder
-        self.text_embedder = Magi1TextProjection(text_embed_dim, time_embed_dim)
+        # Text embedder: xattn uses full dim, adaln uses reduced dim
+        self.text_embedder = Magi1TextProjection(text_embed_dim, dim, adaln_dim=time_embed_dim)
         self.enable_distillation = enable_distillation
 
         self.image_embedder = None
