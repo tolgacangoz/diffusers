@@ -486,10 +486,8 @@ def convert_transformer_state_dict(checkpoint):
         converted_state_dict[f"{block_prefix}.ff.net.0.proj.weight"] = checkpoint[
             f"{layer_prefix}.mlp.linear_fc1.weight"
         ]
-        converted_state_dict[f"{block_prefix}.ff.net.0.proj.bias"] = checkpoint[f"{layer_prefix}.mlp.linear_fc1.bias"]
 
         converted_state_dict[f"{block_prefix}.ff.net.2.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.weight"]
-        converted_state_dict[f"{block_prefix}.ff.net.2.bias"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.bias"]
 
         converted_state_dict[f"{block_prefix}.norm4.weight"] = checkpoint[f"{layer_prefix}.mlp_post_norm.weight"]
         converted_state_dict[f"{block_prefix}.norm4.bias"] = checkpoint[f"{layer_prefix}.mlp_post_norm.bias"]
