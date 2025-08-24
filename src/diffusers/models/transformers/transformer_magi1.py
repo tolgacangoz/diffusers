@@ -340,6 +340,7 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         text_embed_dim (`int`): Input dimension of text embeddings.
         image_embed_dim (`int`, optional): Input dimension of image embeddings.
         pos_embed_seq_len (`int`, optional): Sequence length for image positional embeddings.
+        enable_distillation (`bool`, optional): Enable distillation timestep adjustments.
     """
 
     def __init__(
@@ -349,12 +350,14 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         text_embed_dim: int,
         image_embed_dim: Optional[int] = None,
         pos_embed_seq_len: Optional[int] = None,
+        enable_distillation: bool = False,
     ):
         super().__init__()
 
         self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
         self.text_embedder = Magi1TextProjection(text_embed_dim, dim)
+        self.enable_distillation = enable_distillation
 
         self.image_embedder = None
         if image_embed_dim is not None:
@@ -365,6 +368,8 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        num_steps: Optional[int] = None,
+        distill_interval: Optional[int] = None,
     ):
         timestep = self.timesteps_proj(timestep)
 
@@ -372,6 +377,19 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
             timestep = timestep.to(time_embedder_dtype)
         temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
+        
+        # Apply distillation logic if enabled
+        if self.enable_distillation and num_steps is not None:
+            distill_dt_scalar = 2
+            if num_steps == 12 and distill_interval is not None:
+                base_chunk_step = 4
+                distill_dt_factor = base_chunk_step / distill_interval * distill_dt_scalar
+            else:
+                distill_dt_factor = num_steps / 4 * distill_dt_scalar
+            
+            distill_dt = torch.ones_like(timestep) * distill_dt_factor
+            distill_dt_embed = self.time_embedder(distill_dt)
+            temb = temb + distill_dt_embed
 
         y_xattn, y_adaln = self.text_embedder(encoder_hidden_states)
         if encoder_hidden_states_image is not None:
@@ -393,28 +411,26 @@ class Magi1RotaryPosEmbed(nn.Module):
         self.attention_head_dim = attention_head_dim
         self.patch_size = patch_size
         self.max_seq_len = max_seq_len
+        self.theta = theta
 
-        h_dim = w_dim = 2 * (attention_head_dim // 6)
-        t_dim = attention_head_dim - h_dim - w_dim
-        freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
+        # Learnable frequency bands like original MAGI-1 implementation.
+        # We keep a single vector of bands and build cos/sin embeddings on the fly.
+        num_bands = max(1, attention_head_dim // 6)
+        self.bands = nn.Parameter(self._get_default_bands(num_bands, theta))
 
-        freqs_cos = []
-        freqs_sin = []
+    def _get_default_bands(self, num_bands: int, theta: float) -> torch.Tensor:
+        # Matches the exponential spacing from MAGI-1 for frequency bands
+        exp = torch.arange(0, num_bands, dtype=torch.float32) / max(1, num_bands)
+        bands = 1.0 / (theta**exp)
+        return bands
 
-        for dim in [t_dim, h_dim, w_dim]:
-            freq_cos, freq_sin = get_1d_rotary_pos_embed(
-                dim,
-                max_seq_len,
-                theta,
-                use_real=True,
-                repeat_interleave_real=True,
-                freqs_dtype=freqs_dtype,
-            )
-            freqs_cos.append(freq_cos)
-            freqs_sin.append(freq_sin)
-
-        self.register_buffer("freqs_cos", torch.cat(freqs_cos, dim=1), persistent=False)
-        self.register_buffer("freqs_sin", torch.cat(freqs_sin, dim=1), persistent=False)
+    def _expand_bands(self, target_dim: int) -> torch.Tensor:
+        # Expand or truncate bands to match a target dimension per axis
+        b = self.bands
+        if b.shape[0] == target_dim:
+            return b
+        repeat = (target_dim + b.shape[0] - 1) // b.shape[0]
+        return b.repeat(repeat)[:target_dim]
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
@@ -427,16 +443,30 @@ class Magi1RotaryPosEmbed(nn.Module):
             self.attention_head_dim // 3,
         ]
 
-        freqs_cos = self.freqs_cos.split(split_sizes, dim=1)
-        freqs_sin = self.freqs_sin.split(split_sizes, dim=1)
+        # Build 1D cos/sin tables for t, h, w using learnable bands
+        def build_axis_tables(axis_len: int, dim_axis: int) -> Tuple[torch.Tensor, torch.Tensor]:
+            # positions: [axis_len]
+            pos = torch.arange(axis_len, dtype=torch.float32, device=hidden_states.device)
+            # bands expanded to match dim_axis
+            bands = self._expand_bands(dim_axis).to(hidden_states.device)
+            # angles: [axis_len, dim_axis]
+            angles = pos[:, None] * bands[None, :]
+            return angles.cos(), angles.sin()
 
-        freqs_cos_f = freqs_cos[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
-        freqs_cos_h = freqs_cos[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
-        freqs_cos_w = freqs_cos[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
+        cos_t, sin_t = build_axis_tables(ppf, split_sizes[0])
+        cos_h, sin_h = build_axis_tables(pph, split_sizes[1])
+        cos_w, sin_w = build_axis_tables(ppw, split_sizes[2])
 
-        freqs_sin_f = freqs_sin[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
-        freqs_sin_h = freqs_sin[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
-        freqs_sin_w = freqs_sin[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
+        freqs_cos = [cos_t, cos_h, cos_w]
+        freqs_sin = [sin_t, sin_h, sin_w]
+
+        freqs_cos_f = freqs_cos[0].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
+        freqs_cos_h = freqs_cos[1].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
+        freqs_cos_w = freqs_cos[2].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
+
+        freqs_sin_f = freqs_sin[0].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
+        freqs_sin_h = freqs_sin[1].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
+        freqs_sin_w = freqs_sin[2].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
 
         freqs_cos = torch.cat([freqs_cos_f, freqs_cos_h, freqs_cos_w], dim=-1).reshape(1, ppf * pph * ppw, 1, -1)
         freqs_sin = torch.cat([freqs_sin_f, freqs_sin_h, freqs_sin_w], dim=-1).reshape(1, ppf * pph * ppw, 1, -1)
@@ -634,6 +664,7 @@ class Magi1Transformer3DModel(
         image_embed_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
+        enable_distillation: bool = False,
     ) -> None:
         super().__init__()
 
@@ -651,6 +682,7 @@ class Magi1Transformer3DModel(
             text_embed_dim=cross_attention_dim,
             image_embed_dim=image_embed_dim,
             pos_embed_seq_len=pos_embed_seq_len,
+            enable_distillation=enable_distillation,
         )
 
         # 3. Transformer blocks
@@ -679,15 +711,74 @@ class Magi1Transformer3DModel(
 
         self.gradient_checkpointing = False
 
+    def _generate_condition_map(
+        self, batch_size: int, seq_len: int, denoising_range_num: int, device: torch.device
+    ) -> torch.Tensor:
+        """
+        Generate condition map that determines which condition to use for each token.
+        This replicates the original MAGI-1 condition map generation logic.
+        
+        Args:
+            batch_size: Batch size
+            seq_len: Sequence length (T*H*W after patching)
+            denoising_range_num: Number of denoising ranges
+            device: Device to create tensor on
+            
+        Returns:
+            condition_map: (seq_len, batch_size) tensor mapping tokens to conditions
+        """
+        seqlen_per_chunk = seq_len // denoising_range_num
+        condition_map = torch.arange(batch_size * denoising_range_num, device=device)
+        condition_map = torch.repeat_interleave(condition_map, seqlen_per_chunk)
+        
+        # Handle remainder if seq_len is not perfectly divisible
+        remainder = seq_len % denoising_range_num
+        if remainder > 0:
+            # Extend the last chunk indices for remaining tokens
+            last_indices = torch.full((remainder,), batch_size * denoising_range_num - 1, device=device)
+            condition_map = torch.cat([condition_map, last_indices])
+            
+        condition_map = condition_map.reshape(batch_size, -1).transpose(0, 1).contiguous()
+        return condition_map
+    
+    def _apply_attention_mask(
+        self, y_xattn: torch.Tensor, attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Apply attention mask to cross-attention inputs, flattening variable-length sequences.
+        This replicates the original MAGI-1 cross-attention preprocessing.
+        
+        Args:
+            y_xattn: Cross-attention embeddings (B, seq_len, dim)
+            attention_mask: Attention mask (B, seq_len)
+            
+        Returns:
+            y_xattn_flat: Flattened valid tokens (total_valid_tokens, dim)
+        """
+        # Ensure mask is boolean
+        if attention_mask.dtype != torch.bool:
+            attention_mask = attention_mask.bool()
+            
+        # Flatten and select valid tokens
+        y_xattn_flat = torch.masked_select(
+            y_xattn, attention_mask.unsqueeze(-1)
+        ).reshape(-1, y_xattn.shape[-1])
+        
+        return y_xattn_flat
+
     def forward(
         self,
         hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         condition_map: Optional[torch.Tensor] = None,
+        denoising_range_num: Optional[int] = None,
+        num_steps: Optional[int] = None,
+        distill_interval: Optional[int] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
@@ -714,17 +805,31 @@ class Magi1Transformer3DModel(
 
         # Patch embedding
         hidden_states = self.patch_embedding(hidden_states)
-        hidden_states = hidden_states.flatten(2).transpose(1, 2)
+        hidden_states = hidden_states.flatten(2).transpose(1, 2)  # (B, T*H*W, C)
+        
+        # Generate condition_map if not provided
+        if condition_map is None:
+            condition_map = self._generate_condition_map(
+                batch_size, post_patch_num_frames * post_patch_height * post_patch_width, 
+                denoising_range_num or 1, hidden_states.device
+            )
 
         timestep_shape = timestep.shape
         temb, y_xattn, y_adaln, encoder_hidden_states_image = self.condition_embedder(
-            timestep.flatten(), encoder_hidden_states, encoder_hidden_states_image
+            timestep.flatten(), encoder_hidden_states, encoder_hidden_states_image,
+            num_steps=num_steps, distill_interval=distill_interval
         )
 
         temb = temb.reshape(*timestep_shape, -1) + y_adaln
 
+        # Process cross-attention inputs with proper masking
         if encoder_hidden_states_image is not None:
             encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
+            
+        # Handle attention masking for variable-length sequences
+        if encoder_attention_mask is not None:
+            # Apply masking to flatten variable-length sequences
+            encoder_hidden_states = self._apply_attention_mask(encoder_hidden_states, encoder_attention_mask)
 
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
