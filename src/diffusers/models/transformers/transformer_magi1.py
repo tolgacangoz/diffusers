@@ -193,9 +193,12 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
         self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=False)
         self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=False)
         self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=False)
+        # Original MAGI-1 uses 2 * query_projection_size for all attention outputs
+        # This handles concatenated attention outputs in the original architecture
+        out_features = 2 * self.inner_dim
         self.to_out = torch.nn.ModuleList(
             [
-                torch.nn.Linear(self.inner_dim, dim, bias=False),
+                torch.nn.Linear(out_features, dim, bias=False),
                 torch.nn.Dropout(dropout),
             ]
         )
@@ -361,7 +364,8 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         # For 4.5B: 3072 * 0.25 = 768
         time_embed_dim = int(dim * 0.25)  # cond_hidden_ratio = 0.25
         self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=time_embed_dim)
-        self.text_embedder = Magi1TextProjection(text_embed_dim, dim)
+        # Text embedder also uses reduced dimension like time embedder
+        self.text_embedder = Magi1TextProjection(text_embed_dim, time_embed_dim)
         self.enable_distillation = enable_distillation
 
         self.image_embedder = None
