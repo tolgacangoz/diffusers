@@ -194,7 +194,7 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
         self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=False)
         self.to_out = torch.nn.ModuleList(
             [
-                torch.nn.Linear(self.inner_dim, dim, bias=True),
+                torch.nn.Linear(self.inner_dim, dim, bias=False),
                 torch.nn.Dropout(dropout),
             ]
         )

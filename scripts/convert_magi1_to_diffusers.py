@@ -426,9 +426,6 @@ def convert_transformer_state_dict(checkpoint):
         converted_state_dict[f"{block_prefix}.attn1.to_out.0.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.linear_proj.weight"
         ]
-        converted_state_dict[f"{block_prefix}.attn1.to_out.0.bias"] = checkpoint[
-            f"{layer_prefix}.self_attention.linear_proj.bias"
-        ]
 
         converted_state_dict[f"{block_prefix}.attn1.norm_q.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.q_layernorm.weight"
@@ -464,9 +461,6 @@ def convert_transformer_state_dict(checkpoint):
         # so we set both attn1.to_out and attn2.to_out from the same original weight.
         converted_state_dict[f"{block_prefix}.attn2.to_out.0.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.linear_proj.weight"
-        ]
-        converted_state_dict[f"{block_prefix}.attn2.to_out.0.bias"] = checkpoint[
-            f"{layer_prefix}.self_attention.linear_proj.bias"
         ]
 
         converted_state_dict[f"{block_prefix}.attn2.norm_q.weight"] = checkpoint[
