@@ -187,7 +187,8 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
         self.kv_heads = kv_heads if kv_heads is not None else heads
         self.added_kv_proj_dim = added_kv_proj_dim
         self.cross_attention_dim_head = cross_attention_dim_head
-        self.kv_inner_dim = self.inner_dim if cross_attention_dim_head is None else cross_attention_dim_head * heads
+        # Original MAGI-1 uses kv_heads * dim_head for K/V projections
+        self.kv_inner_dim = dim_head * self.kv_heads
 
         self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=False)
         self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=False)
@@ -198,8 +199,9 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
                 torch.nn.Dropout(dropout),
             ]
         )
-        self.norm_q = FP32LayerNorm(dim_head * heads, eps)
-        self.norm_k = FP32LayerNorm(dim_head * heads, eps)
+        # Original MAGI-1 uses kv_channels (dim_head) for QK norm, not full inner_dim
+        self.norm_q = FP32LayerNorm(dim_head, eps)
+        self.norm_k = FP32LayerNorm(dim_head, eps)
 
         self.add_k_proj = self.add_v_proj = None
         if added_kv_proj_dim is not None:
@@ -355,7 +357,10 @@ class Magi1TimeTextImageEmbedding(nn.Module):
         super().__init__()
 
         self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
+        # Original MAGI-1 uses hidden_size * cond_hidden_ratio for time embedder output
+        # For 4.5B: 3072 * 0.25 = 768
+        time_embed_dim = int(dim * 0.25)  # cond_hidden_ratio = 0.25
+        self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=time_embed_dim)
         self.text_embedder = Magi1TextProjection(text_embed_dim, dim)
         self.enable_distillation = enable_distillation
 
@@ -415,7 +420,8 @@ class Magi1RotaryPosEmbed(nn.Module):
 
         # Learnable frequency bands like original MAGI-1 implementation.
         # We keep a single vector of bands and build cos/sin embeddings on the fly.
-        num_bands = max(1, attention_head_dim // 6)
+        # Original MAGI-1 4.5B-distill uses 16 bands
+        num_bands = 16
         self.bands = nn.Parameter(self._get_default_bands(num_bands, theta))
 
     def _get_default_bands(self, num_bands: int, theta: float) -> torch.Tensor:
