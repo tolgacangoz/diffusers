@@ -414,22 +414,13 @@ def convert_transformer_state_dict(checkpoint):
         converted_state_dict[f"{block_prefix}.attn1.to_q.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.linear_qkv.q.weight"
         ]
-        converted_state_dict[f"{block_prefix}.attn1.to_q.bias"] = checkpoint[
-            f"{layer_prefix}.self_attention.linear_qkv.q.bias"
-        ]
 
         converted_state_dict[f"{block_prefix}.attn1.to_k.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.linear_qkv.k.weight"
         ]
-        converted_state_dict[f"{block_prefix}.attn1.to_k.bias"] = checkpoint[
-            f"{layer_prefix}.self_attention.linear_qkv.k.bias"
-        ]
 
         converted_state_dict[f"{block_prefix}.attn1.to_v.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.linear_qkv.v.weight"
-        ]
-        converted_state_dict[f"{block_prefix}.attn1.to_v.bias"] = checkpoint[
-            f"{layer_prefix}.self_attention.linear_qkv.v.bias"
         ]
 
         converted_state_dict[f"{block_prefix}.attn1.to_out.0.weight"] = checkpoint[
@@ -456,19 +447,17 @@ def convert_transformer_state_dict(checkpoint):
         converted_state_dict[f"{block_prefix}.attn2.to_q.weight"] = checkpoint[
             f"{layer_prefix}.self_attention.linear_qkv.qx.weight"
         ]
-        converted_state_dict[f"{block_prefix}.attn2.to_q.bias"] = checkpoint[
-            f"{layer_prefix}.self_attention.linear_qkv.qx.bias"
-        ]
 
         kv_weight = checkpoint[f"{layer_prefix}.self_attention.linear_kv_xattn.weight"]
         k_weight, v_weight = kv_weight.chunk(2, dim=0)
         converted_state_dict[f"{block_prefix}.attn2.to_k.weight"] = k_weight
         converted_state_dict[f"{block_prefix}.attn2.to_v.weight"] = v_weight
 
-        kv_bias = checkpoint[f"{layer_prefix}.self_attention.linear_kv_xattn.bias"]
-        k_bias, v_bias = kv_bias.chunk(2, dim=0)
-        converted_state_dict[f"{block_prefix}.attn2.to_k.bias"] = k_bias
-        converted_state_dict[f"{block_prefix}.attn2.to_v.bias"] = v_bias
+        # Note: original MAGI-1 uses bias=False for self-attn Q/K/V and cross-attn Qx.
+        # Additionally, the diffusers Magi1Attention uses bias=False for to_q/to_k/to_v.
+        # Therefore, we do not set biases for attn1.to_q/k/v, attn2.to_q, or attn2.to_k/v.
+        # If the original checkpoint contains biases for linear_kv_xattn, they are intentionally not loaded
+        # because the target layers are defined without bias.
 
         # MAGI-1 applies a single shared projection (linear_proj) after concatenating
         # core (self-attn) and cross-attn outputs. Diffusers has separate modules,
