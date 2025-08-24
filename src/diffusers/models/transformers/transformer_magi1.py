@@ -537,14 +537,16 @@ class Magi1TransformerBlock(nn.Module):
             ),
         )
         self.norm2 = FP32LayerNorm(dim, eps)
-        self.norm2.weight += 1
+        with torch.no_grad():
+            self.norm2.weight.add_(1.0)
         self.norm3 = FP32LayerNorm(dim, eps)
 
         # 3. Feed-forward
         self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu")
 
         self.norm4 = FP32LayerNorm(dim, eps)
-        self.norm4.weight += 1
+        with torch.no_grad():
+            self.norm4.weight.add_(1.0)
 
     def forward(
         self,
