@@ -394,7 +394,7 @@ def convert_transformer_state_dict(checkpoint):
     converted_state_dict["norm_out.bias"] = checkpoint["videodit_blocks.final_layernorm.bias"]
 
     converted_state_dict["proj_out.weight"] = checkpoint["final_linear.linear.weight"]
-    converted_state_dict["proj_out.bias"] = checkpoint["final_linear.linear.bias"]
+    # Note: FinalLinear in original MAGI-1 uses bias=False, so there is no bias parameter to map here.
 
     # Map RoPE parameters - original MAGI-1 uses single learnable bands parameter
     # Updated diffusers implementation also uses a single learnable `bands` parameter.
