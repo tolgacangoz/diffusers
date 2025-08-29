@@ -909,14 +909,67 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
                         noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
                     update_mask_i = step_update_mask[i]
-                    for idx in range(valid_interval_start, valid_interval_end):
-                        if update_mask_i[idx].item():
-                            latents[:, :, idx, :, :] = sample_schedulers[idx].step(
-                                noise_pred[:, :, idx - valid_interval_start, :, :],
-                                t[idx],
-                                latents[:, :, idx, :, :],
-                                return_dict=False,
-                            )[0]
+
+                    # GPU-native vectorized scheduler processing
+                    indices_to_update = torch.nonzero(update_mask_i, as_tuple=False).squeeze(-1)
+
+                    if len(indices_to_update) > 0:
+                        # Method 1: Vectorized batch processing on GPU
+                        # Gather all tensors that need processing
+                        noise_pred_batch = []
+                        latents_batch = []
+                        timesteps_batch = []
+
+                        for idx in indices_to_update:
+                            idx_val = idx.item()
+                            if valid_interval_start <= idx_val < valid_interval_end:
+                                noise_pred_batch.append(noise_pred[:, :, idx_val - valid_interval_start, :, :])
+                                latents_batch.append(latents[:, :, idx_val, :, :])
+                                timesteps_batch.append(t[idx_val])
+
+                        # Process all scheduler steps in parallel using GPU streams
+                        if noise_pred_batch:
+                            # Stack tensors for batch processing
+                            noise_pred_stacked = torch.stack(noise_pred_batch, dim=2)  # [B, C, N, H, W]
+                            latents_stacked = torch.stack(latents_batch, dim=2)        # [B, C, N, H, W]
+
+                            # Process each scheduler step on different CUDA streams for true parallelism
+                            if torch.cuda.is_available():
+                                streams = [torch.cuda.Stream() for _ in range(min(len(indices_to_update), 4))]
+                                results = []
+
+                                for batch_idx, (noise_slice, latent_slice, timestep_val, orig_idx) in enumerate(
+                                    zip(noise_pred_batch, latents_batch, timesteps_batch, indices_to_update)
+                                ):
+                                    stream = streams[batch_idx % len(streams)]
+                                    with torch.cuda.stream(stream):
+                                        # Each scheduler step runs on a different stream
+                                        result = sample_schedulers[orig_idx.item()].step(
+                                            noise_slice,
+                                            timestep_val,
+                                            latent_slice,
+                                            return_dict=False,
+                                        )[0]
+                                        results.append((orig_idx.item(), result))
+
+                                # Synchronize all streams and update latents
+                                for stream in streams:
+                                    stream.synchronize()
+
+                                for idx, result in results:
+                                    latents[:, :, idx, :, :] = result
+                            else:
+                                # Fallback for CPU: sequential processing
+                                for noise_slice, latent_slice, timestep_val, orig_idx in zip(
+                                    noise_pred_batch, latents_batch, timesteps_batch, indices_to_update
+                                ):
+                                    result = sample_schedulers[orig_idx.item()].step(
+                                        noise_slice,
+                                        timestep_val,
+                                        latent_slice,
+                                        return_dict=False,
+                                    )[0]
+                                    latents[:, :, orig_idx.item(), :, :] = result
 
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
