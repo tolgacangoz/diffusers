@@ -681,7 +681,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         height: int = 480,
         width: int = 832,
         num_frames_per_chunk: int = 81,
-        num_inference_steps: int = 50,
+        num_inference_steps: int = 40,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
