@@ -744,6 +744,7 @@ class WanS2VTransformerBlock(nn.Module):
         c_gate_msa = c_gate_msa.squeeze(1)
 
         norm_hidden_states = self.norm1(hidden_states.float())
+        print(f"norm_hidden_states: {norm_hidden_states.shape}")
         parts = []
         for i in range(2):
             parts.append(
