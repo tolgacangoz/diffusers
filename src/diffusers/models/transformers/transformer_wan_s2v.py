@@ -1016,12 +1016,8 @@ class WanS2VTransformer3DModel(
                 attn_hidden_states = self.audio_injector.injector_pre_norm_feat[audio_attn_id](input_hidden_states)
 
             residual_out = self.audio_injector.injector[audio_attn_id](
-                x=attn_hidden_states,
-                context=attn_audio_emb,
-                context_lens=torch.ones(
-                    attn_hidden_states.shape[0], dtype=torch.long, device=attn_hidden_states.device
-                )
-                * attn_audio_emb.shape[1],
+                attn_hidden_states,
+                attn_audio_emb,
             )
             residual_out = residual_out.unflatten(0, (-1, merged_audio_emb_num_frames)).flatten(1, 2)
             hidden_states[:, :original_sequence_length] = hidden_states[:, :original_sequence_length] + residual_out
