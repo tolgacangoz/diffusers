@@ -1178,6 +1178,7 @@ class WanS2VTransformer3DModel(
         else:
             for block_idx, block in enumerate(self.blocks):
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
+                print(f"hidden_states: {hidden_states.shape}")
                 hidden_states = self.after_transformer_block(
                     block_idx,
                     hidden_states,
