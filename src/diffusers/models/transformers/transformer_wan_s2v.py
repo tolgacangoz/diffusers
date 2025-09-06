@@ -130,8 +130,6 @@ class WanAttnProcessor:
                     x_i = torch.view_as_complex(hidden_states[i, :s].to(torch.float64).reshape(s, n, -1, 2))
                     freqs_i = freqs[i, :s]
                     # apply rotary embedding
-                    print(f"freqs_i: {freqs_i.shape}")
-                    print(f"x_i: {x_i.shape}")
                     x_i = torch.view_as_real(x_i * freqs_i).flatten(2)
                     x_i = torch.cat([x_i, hidden_states[i, s:]])
                     # append to collection
@@ -744,7 +742,6 @@ class WanS2VTransformerBlock(nn.Module):
         c_gate_msa = c_gate_msa.squeeze(1)
 
         norm_hidden_states = self.norm1(hidden_states.float())
-        print(f"norm_hidden_states: {norm_hidden_states.shape}")
         parts = []
         for i in range(2):
             parts.append(
@@ -981,8 +978,6 @@ class WanS2VTransformer3DModel(
         if len(mot) > 0:
             hidden_states = [torch.cat([u.unsqueeze(0), m], dim=1) for u, m in zip(hidden_states, mot)]
             seq_lens = seq_lens + torch.tensor([r.size(1) for r in mot], dtype=torch.long)
-            print(f"rope_embs' shape: {rope_embs[0].unsqueeze(0).shape}")
-            print(f"mot_remb' shape: {mot_remb[0].shape}")
             rope_embs = [torch.cat([u.unsqueeze(0), m], dim=1) for u, m in zip(rope_embs, mot_remb)]
             mask_input = [
                 torch.cat(
@@ -1122,7 +1117,6 @@ class WanS2VTransformer3DModel(
             .repeat(batch_size, 1, 1)
         )
         mask_input[:, :, original_sequence_length:] = 1
-        print(f"hidden_states: {hidden_states.shape}")
         hidden_states, sequence_length, rotary_emb, mask_input = self.inject_motion(
             hidden_states,
             sequence_length,
@@ -1137,7 +1131,6 @@ class WanS2VTransformer3DModel(
         rotary_emb = torch.cat(rotary_emb)
         mask_input = torch.cat(mask_input)
 
-        print(f"hidden_states: {hidden_states.shape}")
         hidden_states = hidden_states + self.trainable_condition_mask(mask_input).to(hidden_states.dtype)
 
         if self.config.zero_timestep:
@@ -1156,7 +1149,7 @@ class WanS2VTransformer3DModel(
         merged_audio_emb_num_frames = merged_audio_emb.shape[1]  # B F N C
         attn_audio_emb = merged_audio_emb.flatten(0, 1).to(hidden_states.dtype)
         audio_emb_global = audio_emb_global.flatten(0, 1).to(hidden_states.dtype)
-        print(f"hidden_states: {hidden_states.shape}")
+
         # 5. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block_idx, block in enumerate(self.blocks):
@@ -1174,7 +1167,6 @@ class WanS2VTransformer3DModel(
         else:
             for block_idx, block in enumerate(self.blocks):
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
-                print(f"hidden_states: {hidden_states.shape}")
                 hidden_states = self.after_transformer_block(
                     block_idx,
                     hidden_states,
