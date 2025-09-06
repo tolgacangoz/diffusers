@@ -122,12 +122,12 @@ class WanAttnProcessor:
 
             def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
                 # dtype = torch.float32 if hidden_states.device.type == "mps" else torch.float64
-                n = query.size(2)
+                n = hidden_states.size(2)
                 # loop over samples
                 output = []
-                for i in range(query.size(0)):
-                    s = query.size(1)
-                    x_i = torch.view_as_complex(query[i, :s].to(torch.float64).reshape(s, n, -1, 2))
+                for i in range(hidden_states.size(0)):
+                    s = hidden_states.size(1)
+                    x_i = torch.view_as_complex(hidden_states[i, :s].to(torch.float64).reshape(s, n, -1, 2))  # Use hidden_states instead of query
                     freqs_i = freqs[i, :s]
                     # apply rotary embedding
                     x_i = torch.view_as_real(x_i * freqs_i).flatten(2)
