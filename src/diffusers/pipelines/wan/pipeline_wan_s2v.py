@@ -899,7 +899,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 init_first_frame,
                 num_chunks,
                 sampling_fps,
-                transformer_dtype,
             )
 
             if r == 0:
