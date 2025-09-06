@@ -981,7 +981,7 @@ class WanS2VTransformer3DModel(
             rope_embs = [torch.cat([u.unsqueeze(0), m], dim=1) for u, m in zip(rope_embs, mot_remb)]
             mask_input = [
                 torch.cat(
-                    [m.unsqueeze(0), 2 * torch.ones([1, u.shape[2] - m.shape[2]], device=m.device, dtype=m.dtype)],
+                    [m, 2 * torch.ones([1, u.shape[1] - m.shape[1]], device=m.device, dtype=m.dtype)],
                     dim=1,
                 )
                 for m, u in zip(mask_input, hidden_states)
