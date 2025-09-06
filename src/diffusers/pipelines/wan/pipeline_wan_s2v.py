@@ -539,12 +539,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if image is not None:
             image = image.unsqueeze(2)  # [batch_size, channels, 1, height, width]
 
-            video_condition = torch.cat(
-                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames_per_chunk - 1, height, width)],
-                dim=2,
-            )
-
-            video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
+            video_condition = image.to(device=device, dtype=self.vae.dtype)
 
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
