@@ -1158,8 +1158,8 @@ class WanS2VTransformer3DModel(
             timestep_proj = [timestep_proj, 0]
 
         merged_audio_emb_num_frames = merged_audio_emb.shape[1]  # B F N C
-        attn_audio_emb = merged_audio_emb.flatten(0, 1)
-        audio_emb_global = audio_emb_global.flatten(0, 1)
+        attn_audio_emb = merged_audio_emb.flatten(0, 1).to(hidden_states.dtype)
+        audio_emb_global = audio_emb_global.flatten(0, 1).to(hidden_states.dtype)
         print(f"hidden_states: {hidden_states.shape}")
         # 5. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
