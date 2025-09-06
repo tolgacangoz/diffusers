@@ -130,6 +130,8 @@ class WanAttnProcessor:
                     x_i = torch.view_as_complex(hidden_states[i, :s].to(torch.float64).reshape(s, n, -1, 2))
                     freqs_i = freqs[i, :s]
                     # apply rotary embedding
+                    print(f"freqs_i: {freqs_i.shape}")
+                    print(f"x_i: {x_i.shape}")
                     x_i = torch.view_as_real(x_i * freqs_i).flatten(2)
                     x_i = torch.cat([x_i, hidden_states[i, s:]])
                     # append to collection
@@ -627,9 +629,9 @@ class WanS2VRotaryPosEmbed(nn.Module):
 
         # Loop over samples
         output = torch.view_as_complex(
-            hidden_states.detach().reshape(
-                (batch_size, S, self.num_attention_heads, -1, 2),
-            ).to(torch.float64)
+            torch.ones(
+                (batch_size, S, self.num_attention_heads, -1, 2), device=hidden_states.device
+                ).to(torch.float64)
         )
         seq_bucket = [0]
         for g in grids:
