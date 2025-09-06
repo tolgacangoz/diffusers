@@ -517,7 +517,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         init_first_frame: bool = False,
         num_chunks: int = 1,
         sampling_fps: int = 16,
-        transformer_dtype: torch.dtype = torch.bfloat16,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, List[torch.Tensor]]]:
         num_latent_frames = (
             num_frames_per_chunk + 3 + self.motion_frames
@@ -571,20 +570,21 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             motion_pixels = torch.zeros([1, 3, self.motion_frames, height, width], dtype=self.vae.dtype, device=device)
             # Get pose condition input if needed
             pose_condition = self.load_pose_condition(
-                pose_video, num_chunks, num_frames_per_chunk, (height, width), sampling_fps
+                pose_video, num_chunks, num_frames_per_chunk, (height, width), sampling_fps, latents_mean, latents_std
             )
             # Encode motion latents
             if init_first_frame:
                 self.drop_first_motion = False
                 motion_pixels[:, :, -6:] = latent_condition
             motion_latents = retrieve_latents(self.vae.encode(motion_pixels), sample_mode="argmax")
+            motion_latents = (motion_latents - latents_mean) * latents_std
             videos_last_latents = motion_latents.detach()
 
             return latents, latent_condition, videos_last_latents, motion_latents, pose_condition
         else:
             return latents
 
-    def load_pose_condition(self, pose_video, num_chunks, num_frames_per_chunk, size, sampling_fps):
+    def load_pose_condition(self, pose_video, num_chunks, num_frames_per_chunk, size, sampling_fps, latents_mean, latents_std):
         HEIGHT, WIDTH = size
         if pose_video is not None:
             pose_seq = self.read_last_n_frames(
@@ -610,6 +610,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             cond = torch.cat([cond[:, :, 0:1], cond], dim=2)
             cond = cond.to(dtype=self.dtype, device=self._execution_device)
             cond_lat = retrieve_latents(self.vae.encode(cond), sample_mode="argmax")[:, :, 1:]
+            cond_lat = (cond_lat - latents_mean) * latents_std
             pose_condition.append(cond_lat)
 
         return pose_condition
