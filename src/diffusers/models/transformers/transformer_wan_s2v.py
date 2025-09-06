@@ -407,7 +407,12 @@ class FramePackMotioner(nn.Module):
         self.proj_4x = nn.Conv3d(16, inner_dim, kernel_size=(4, 8, 8), stride=(4, 8, 8))
         self.zip_frame_buckets = torch.tensor(zip_frame_buckets, dtype=torch.long)
 
-        self.rope = WanS2VRotaryPosEmbed(inner_dim // num_attention_heads, patch_size=patch_size, max_seq_len=1024)
+        self.rope = WanS2VRotaryPosEmbed(
+            inner_dim // num_attention_heads,
+            patch_size=patch_size,
+            max_seq_len=1024,
+            num_attention_heads=num_attention_heads,
+        )
 
     def forward(self, motion_latents, add_last_motion=2):
         mot = []
@@ -555,6 +560,7 @@ class WanS2VRotaryPosEmbed(nn.Module):
         attention_head_dim: int,
         patch_size: Tuple[int, int, int],
         max_seq_len: int,
+        num_attention_heads: int,
         theta: float = 10000.0,
     ):
         super().__init__()
@@ -562,6 +568,7 @@ class WanS2VRotaryPosEmbed(nn.Module):
         self.attention_head_dim = attention_head_dim
         self.patch_size = patch_size
         self.max_seq_len = max_seq_len
+        self.num_attention_heads = num_attention_heads
 
         h_dim = w_dim = 2 * (attention_head_dim // 6)
         t_dim = attention_head_dim - h_dim - w_dim
@@ -606,9 +613,8 @@ class WanS2VRotaryPosEmbed(nn.Module):
 
             grids = [grid_sizes, image_grid_sizes]
             S = ppf * pph * ppw + image_latents.shape[3] // p_h * image_latents.shape[4] // p_w
-            num_heads = num_channels // self.attention_head_dim
         else:  # FramePack's RoPE
-            batch_size, S, num_heads, _ = hidden_states.shape
+            batch_size, S, _, _ = hidden_states.shape
             grids = grid_sizes
 
         split_sizes = [
@@ -621,9 +627,9 @@ class WanS2VRotaryPosEmbed(nn.Module):
 
         # Loop over samples
         output = torch.view_as_complex(
-            torch.zeros((batch_size, S, num_heads, self.attention_head_dim // 2, 2), device=hidden_states.device).to(
-                torch.float64
-            )
+            torch.zeros(
+                (batch_size, S, self.num_attention_heads, self.attention_head_dim // 2, 2), device=hidden_states.device
+            ).to(torch.float64)
         )
         seq_bucket = [0]
         for g in grids:
@@ -854,7 +860,7 @@ class WanS2VTransformer3DModel(
         out_channels = out_channels or in_channels
 
         # 1. Patch & position embedding
-        self.rope = WanS2VRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
+        self.rope = WanS2VRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len, num_attention_heads)
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         if enable_framepack:
@@ -970,11 +976,14 @@ class WanS2VTransformer3DModel(
         if len(mot) > 0:
             hidden_states = [torch.cat([u.unsqueeze(0), m], dim=1) for u, m in zip(hidden_states, mot)]
             seq_lens = seq_lens + torch.tensor([r.size(1) for r in mot], dtype=torch.long)
-            print(f"rope_embs' shape: {rope_embs[0].shape}")
+            print(f"rope_embs' shape: {rope_embs[0].unsqueeze(0).shape}")
             print(f"mot_remb' shape: {mot_remb[0].shape}")
             rope_embs = [torch.cat([u.unsqueeze(0), m], dim=1) for u, m in zip(rope_embs, mot_remb)]
             mask_input = [
-                torch.cat([m.unsqueeze(0), 2 * torch.ones([1, u.shape[2] - m.shape[2]], device=m.device, dtype=m.dtype)], dim=1)
+                torch.cat(
+                    [m.unsqueeze(0), 2 * torch.ones([1, u.shape[2] - m.shape[2]], device=m.device, dtype=m.dtype)],
+                    dim=1,
+                )
                 for m, u in zip(mask_input, hidden_states)
             ]
         return hidden_states, seq_lens, rope_embs, mask_input
