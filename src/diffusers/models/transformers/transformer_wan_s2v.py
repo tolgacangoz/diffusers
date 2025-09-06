@@ -136,7 +136,7 @@ class WanAttnProcessor:
                     x_i = torch.cat([x_i, hidden_states[i, s:]])
                     # append to collection
                     output.append(x_i)
-                return torch.stack(output).float()
+                return torch.stack(output).type_as(hidden_states)
 
             query = apply_rotary_emb(query, rotary_emb)
             key = apply_rotary_emb(key, rotary_emb)
