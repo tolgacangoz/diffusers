@@ -629,9 +629,9 @@ class WanS2VRotaryPosEmbed(nn.Module):
 
         # Loop over samples
         output = torch.view_as_complex(
-            torch.empty(
+            torch.zeros(
                 (batch_size, S, self.num_attention_heads,
-                 self.num_attention_heads * self.attention_head_dim // 2,
+                 self.attention_head_dim // 2,
                  2), device=hidden_states.device
                 ).to(torch.float64)
         )
