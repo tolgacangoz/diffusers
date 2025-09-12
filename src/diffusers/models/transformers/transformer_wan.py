@@ -165,6 +165,22 @@ class WanAttnProcessor2_0:
         deprecate("WanAttnProcessor2_0", "1.0.0", deprecation_message, standard_warn=False)
         return WanAttnProcessor(*args, **kwargs)
 
+class FP32RMSNorm(torch.nn.Module):
+    def __init__(self, dim, eps=1e-6, elementwise_affine=True):
+        super().__init__()
+        self.eps = eps
+        self.weight = torch.nn.Parameter(torch.ones(dim)) if elementwise_affine else None
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # emulate WanRMSNorm: compute in float32, then cast back, then apply weight
+        y = x.float()
+        var = (y * y).mean(dim=-1, keepdim=True)
+        y = y * torch.rsqrt(var + self.eps)
+        y = y.to(dtype=x.dtype)
+        if self.weight is not None:
+            y = y * self.weight
+        return y
+
 
 class WanAttention(torch.nn.Module, AttentionModuleMixin):
     _default_processor_cls = WanAttnProcessor
@@ -199,8 +215,8 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
                 torch.nn.Dropout(dropout),
             ]
         )
-        self.norm_q = torch.nn.RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
-        self.norm_k = torch.nn.RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
+        self.norm_q = FP32RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
+        self.norm_k = FP32RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
 
         self.add_k_proj = self.add_v_proj = None
         if added_kv_proj_dim is not None:
