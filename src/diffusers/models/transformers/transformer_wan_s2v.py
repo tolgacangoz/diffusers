@@ -1129,7 +1129,7 @@ class WanS2VTransformer3DModel(
             drop_motion_frames,
             add_last_motion,
         )
-        attention_kwargs = {"max_seqlen_k": sequence_length}
+        attention_kwargs = {"max_seqlen_k": sequence_length.item()}
 
         hidden_states = hidden_states + self.trainable_condition_mask(mask_input).to(hidden_states.dtype)
 
