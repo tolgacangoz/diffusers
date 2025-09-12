@@ -750,7 +750,7 @@ class WanS2VTransformerBlock(nn.Module):
         norm_hidden_states = torch.cat(parts, dim=1).type_as(hidden_states)
 
         # 1. Self-attention
-        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb, attention_kwargs)
+        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb, **(attention_kwargs or {}))
         z = []
         for i in range(2):
             z.append(attn_output[:, seg_idx[i] : seg_idx[i + 1]] * gate_msa[:, i : i + 1])
@@ -759,7 +759,7 @@ class WanS2VTransformerBlock(nn.Module):
 
         # 2. Cross-attention
         norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
-        attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None, attention_kwargs)
+        attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None, **(attention_kwargs or {}))
         hidden_states = hidden_states + attn_output
 
         # 3. Feed-forward
@@ -1153,7 +1153,7 @@ class WanS2VTransformer3DModel(
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block_idx, block in enumerate(self.blocks):
                 hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs
+                    block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs=attention_kwargs
                 )
                 hidden_states = self.after_transformer_block(
                     block_idx,
@@ -1165,7 +1165,7 @@ class WanS2VTransformer3DModel(
                 )
         else:
             for block_idx, block in enumerate(self.blocks):
-                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs)
+                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs=attention_kwargs)
                 hidden_states = self.after_transformer_block(
                     block_idx,
                     hidden_states,
