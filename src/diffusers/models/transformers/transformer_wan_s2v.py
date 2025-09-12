@@ -105,20 +105,36 @@ class WanAttnProcessor:
     ) -> torch.Tensor:
         attention_kwargs = kwargs
         encoder_hidden_states_img = None
-        if attn.add_k_proj is not None:
+        if attn.add_k_proj is not None and encoder_hidden_states is not None:
             # 512 is the context length of the text encoder, hardcoded for now
             image_context_length = encoder_hidden_states.shape[1] - 512
             encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
             encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
 
-        query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
+        # Perform projections in float32 for improved numerical parity with original implementation
+        hs_fp32 = hidden_states.float()
+        ehs_fp32 = (encoder_hidden_states if encoder_hidden_states is not None else hidden_states).float()
 
+        if getattr(attn, "fused_projections", False):
+            if attn.cross_attention_dim_head is None:
+                qkv = attn.to_qkv(hs_fp32)
+                query, key, value = qkv.chunk(3, dim=-1)
+            else:
+                query = attn.to_q(hs_fp32)
+                kv = attn.to_kv(ehs_fp32)
+                key, value = kv.chunk(2, dim=-1)
+        else:
+            query = attn.to_q(hs_fp32)
+            key = attn.to_k(ehs_fp32)
+            value = attn.to_v(ehs_fp32)
+
+        # q/k normalization (FP32 inside norm modules), then cast back to model dtype right before head reshape
         query = attn.norm_q(query)
         key = attn.norm_k(key)
 
-        query = query.unflatten(2, (attn.heads, -1))
-        key = key.unflatten(2, (attn.heads, -1))
-        value = value.unflatten(2, (attn.heads, -1))
+        query = query.to(hidden_states.dtype).unflatten(2, (attn.heads, -1))
+        key = key.to(hidden_states.dtype).unflatten(2, (attn.heads, -1))
+        value = value.to(hidden_states.dtype).unflatten(2, (attn.heads, -1))
 
         if rotary_emb is not None:
 
@@ -172,15 +188,14 @@ class WanAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
-            attention_kwargs=attention_kwargs,
         )
-        hidden_states = hidden_states.flatten(2, 3)
-        hidden_states = hidden_states.type_as(query)
-
+        # Output projection in float32 for improved parity, then cast back before dropout
+        hidden_states = hidden_states.flatten(2, 3).float()
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = hidden_states.to(dtype=query.dtype)
         if hidden_states_img is not None:
             hidden_states = hidden_states + hidden_states_img
 
-        hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
 
