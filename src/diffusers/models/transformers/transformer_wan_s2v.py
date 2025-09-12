@@ -122,6 +122,7 @@ class WanAttnProcessor:
 
         if rotary_emb is not None:
 
+            @torch.cuda.amp.autocast(enabled=False)
             def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
                 # dtype = torch.float32 if hidden_states.device.type == "mps" else torch.float64
                 n = hidden_states.size(2)
@@ -315,12 +316,13 @@ class CausalAudioEncoder(nn.Module):
         self.act = torch.nn.SiLU()
 
     def forward(self, features):
-        # features B * num_layers * dim * video_length
-        weights = self.act(self.weights)
-        weights_sum = weights.sum(dim=1, keepdims=True)
-        weighted_feat = ((features * weights) / weights_sum).sum(dim=1)  # b dim f
-        weighted_feat = weighted_feat.permute(0, 2, 1)  # b f dim
-        res = self.encoder(weighted_feat)  # b f n dim
+        with torch.cuda.amp.autocast(dtype=torch.float32):
+            # features B * num_layers * dim * video_length
+            weights = self.act(self.weights)
+            weights_sum = weights.sum(dim=1, keepdims=True)
+            weighted_feat = ((features * weights) / weights_sum).sum(dim=1)  # b dim f
+            weighted_feat = weighted_feat.permute(0, 2, 1)  # b f dim
+            res = self.encoder(weighted_feat)  # b f n dim
 
         return res  # b f n dim
 
