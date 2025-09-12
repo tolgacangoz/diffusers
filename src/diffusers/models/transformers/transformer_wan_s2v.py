@@ -101,6 +101,7 @@ class WanAttnProcessor:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_kwargs: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -156,6 +157,7 @@ class WanAttnProcessor:
                 dropout_p=0.0,
                 is_causal=False,
                 backend=self._attention_backend,
+                attention_kwargs=attention_kwargs,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
@@ -168,6 +170,7 @@ class WanAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
+            attention_kwargs=attention_kwargs,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
@@ -719,6 +722,7 @@ class WanS2VTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: Tuple[torch.Tensor, torch.Tensor],
         rotary_emb: torch.Tensor,
+        attention_kwargs: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         seg_idx = temb[1].item()
         seg_idx = min(max(0, seg_idx), hidden_states.shape[1])
@@ -746,7 +750,7 @@ class WanS2VTransformerBlock(nn.Module):
         norm_hidden_states = torch.cat(parts, dim=1).type_as(hidden_states)
 
         # 1. Self-attention
-        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
+        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb, attention_kwargs)
         z = []
         for i in range(2):
             z.append(attn_output[:, seg_idx[i] : seg_idx[i + 1]] * gate_msa[:, i : i + 1])
@@ -755,7 +759,7 @@ class WanS2VTransformerBlock(nn.Module):
 
         # 2. Cross-attention
         norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
-        attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
+        attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None, attention_kwargs)
         hidden_states = hidden_states + attn_output
 
         # 3. Feed-forward
@@ -1124,6 +1128,7 @@ class WanS2VTransformer3DModel(
             drop_motion_frames,
             add_last_motion,
         )
+        attention_kwargs = {"max_seqlen_k": sequence_length}
 
         hidden_states = hidden_states + self.trainable_condition_mask(mask_input).to(hidden_states.dtype)
 
@@ -1148,7 +1153,7 @@ class WanS2VTransformer3DModel(
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block_idx, block in enumerate(self.blocks):
                 hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb
+                    block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs
                 )
                 hidden_states = self.after_transformer_block(
                     block_idx,
@@ -1160,7 +1165,7 @@ class WanS2VTransformer3DModel(
                 )
         else:
             for block_idx, block in enumerate(self.blocks):
-                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
+                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs)
                 hidden_states = self.after_transformer_block(
                     block_idx,
                     hidden_states,
