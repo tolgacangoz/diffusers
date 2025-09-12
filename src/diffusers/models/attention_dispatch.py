@@ -607,11 +607,12 @@ def _flash_varlen_attention(
         if max_seqlen_k is not None:
             seqlens_k = torch.full((batch_size,), max_seqlen_k, dtype=torch.int32, device=query.device)
         
-            (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
+            (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, _) = (
                 _prepare_for_flash_attn_or_sage_varlen(
-                    batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
+                    batch_size, seq_len_q, max_seqlen_k, attn_mask=attn_mask, device=query.device
                 )
             )
+            max_seqlen_k = seq_len_kv
         else:
             (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
                 _prepare_for_flash_attn_or_sage_varlen(
