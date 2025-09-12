@@ -181,9 +181,9 @@ class WanAttnProcessor:
             hidden_states_img = hidden_states_img.type_as(query)
 
         hidden_states = dispatch_attention_fn(
-            query,
-            key,
-            value,
+            query.to(torch.bfloat16),
+            key.to(torch.bfloat16),
+            value.to(torch.bfloat16),
             attn_mask=attention_mask,
             dropout_p=0.0,
             is_causal=False,
