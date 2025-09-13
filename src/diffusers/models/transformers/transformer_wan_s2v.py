@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import torch.cuda.amp as amp
 
 import math
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -1196,8 +1195,7 @@ class WanS2VTransformer3DModel(
         hidden_states = hidden_states[:, :original_sequence_length]
 
         # 6. Output norm, projection & unpatchify
-        with amp.autocast(dtype=torch.float32):
-            shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
+        shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
 
         # Move the shift and scale tensors to the same device as hidden_states.
         # When using multi-GPU inference via accelerate these will be on the
@@ -1206,9 +1204,8 @@ class WanS2VTransformer3DModel(
         shift = shift.to(hidden_states.device)
         scale = scale.to(hidden_states.device)
 
-        with amp.autocast(dtype=torch.float32):
-            hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift)#.type_as(hidden_states)
-            hidden_states = self.proj_out(hidden_states)
+        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
 
         hidden_states = hidden_states.reshape(
             batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p_h, p_w, -1
