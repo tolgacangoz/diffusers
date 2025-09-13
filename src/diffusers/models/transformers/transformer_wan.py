@@ -167,7 +167,6 @@ class WanAttnProcessor2_0:
 
 
 class FP32RMSNorm(nn.Module):
-
     def __init__(self, dim, eps=1e-5):
         super().__init__()
         self.dim = dim
@@ -183,6 +182,7 @@ class FP32RMSNorm(nn.Module):
 
     def _norm(self, x):
         return x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+
 
 class WanAttention(torch.nn.Module, AttentionModuleMixin):
     _default_processor_cls = WanAttnProcessor
@@ -217,8 +217,8 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
                 torch.nn.Dropout(dropout),
             ]
         )
-        self.norm_q = FP32RMSNorm(dim_head * heads, eps=eps)#, elementwise_affine=True)
-        self.norm_k = FP32RMSNorm(dim_head * heads, eps=eps)#, elementwise_affine=True)
+        self.norm_q = FP32RMSNorm(dim_head * heads, eps=eps)  # , elementwise_affine=True)
+        self.norm_k = FP32RMSNorm(dim_head * heads, eps=eps)  # , elementwise_affine=True)
 
         self.add_k_proj = self.add_v_proj = None
         if added_kv_proj_dim is not None:

@@ -1154,7 +1154,12 @@ class WanS2VTransformer3DModel(
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block_idx, block in enumerate(self.blocks):
                 hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs=attention_kwargs
+                    block,
+                    hidden_states,
+                    encoder_hidden_states,
+                    timestep_proj,
+                    rotary_emb,
+                    attention_kwargs,
                 )
                 hidden_states = self.after_transformer_block(
                     block_idx,
@@ -1166,7 +1171,9 @@ class WanS2VTransformer3DModel(
                 )
         else:
             for block_idx, block in enumerate(self.blocks):
-                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs=attention_kwargs)
+                hidden_states = block(
+                    hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs
+                )
                 hidden_states = self.after_transformer_block(
                     block_idx,
                     hidden_states,
