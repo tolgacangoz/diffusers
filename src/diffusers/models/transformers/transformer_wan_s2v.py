@@ -1016,12 +1016,20 @@ class WanS2VTransformer3DModel(
             else:
                 attn_hidden_states = self.audio_injector.injector_pre_norm_feat[audio_attn_id](input_hidden_states)
 
+            # Perform audio cross-attention in float32 for numerical parity with original
+            attn_hidden_states = attn_hidden_states.to(torch.float32)
+            attn_audio_emb = attn_audio_emb.to(torch.float32)
+            audio_emb_global = audio_emb_global.to(torch.float32)
+
             residual_out = self.audio_injector.injector[audio_attn_id](
                 attn_hidden_states,
                 attn_audio_emb,
             )
             residual_out = residual_out.unflatten(0, (-1, merged_audio_emb_num_frames)).flatten(1, 2)
-            hidden_states[:, :original_sequence_length] = hidden_states[:, :original_sequence_length] + residual_out
+            # Cast residual to hidden_states dtype when adding back
+            hidden_states[:, :original_sequence_length] = (
+                hidden_states[:, :original_sequence_length] + residual_out.to(hidden_states.dtype)
+            )
 
         return hidden_states
 
@@ -1147,8 +1155,9 @@ class WanS2VTransformer3DModel(
             timestep_proj = [timestep_proj, 0]
 
         merged_audio_emb_num_frames = merged_audio_emb.shape[1]  # B F N C
-        attn_audio_emb = merged_audio_emb.flatten(0, 1).to(hidden_states.dtype)
-        audio_emb_global = audio_emb_global.flatten(0, 1).to(hidden_states.dtype)
+        # Keep audio embeddings in float32 to match original repo behavior
+        attn_audio_emb = merged_audio_emb.flatten(0, 1).to(torch.float32)
+        audio_emb_global = audio_emb_global.flatten(0, 1).to(torch.float32)
 
         # 5. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
