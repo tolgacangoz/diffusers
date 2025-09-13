@@ -1204,7 +1204,7 @@ class WanS2VTransformer3DModel(
         shift = shift.to(hidden_states.device)
         scale = scale.to(hidden_states.device)
 
-        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
+        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift)#.type_as(hidden_states)
         hidden_states = self.proj_out(hidden_states)
 
         hidden_states = hidden_states.reshape(
