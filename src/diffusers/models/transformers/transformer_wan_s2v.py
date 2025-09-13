@@ -85,13 +85,13 @@ def _get_added_kv_projections(attn: "WanAttention", encoder_hidden_states_img: t
     return key_img, value_img
 
 
-class WanAttnProcessor:
+class WanS2VAttnProcessor:
     _attention_backend = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "WanAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to version 2.0 or higher."
+                "WanS2VAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to version 2.0 or higher."
             )
 
     def __call__(
@@ -358,7 +358,7 @@ class AudioInjector(nn.Module):
                     eps=eps,
                     added_kv_proj_dim=added_kv_proj_dim,
                     cross_attention_dim_head=dim // num_heads,
-                    processor=WanAttnProcessor(),
+                    processor=WanS2VAttnProcessor(),
                 )
                 for _ in range(audio_injector_id)
             ]
@@ -695,7 +695,7 @@ class WanS2VTransformerBlock(nn.Module):
             dim_head=dim // num_heads,
             eps=eps,
             cross_attention_dim_head=None,
-            processor=WanAttnProcessor(),
+            processor=WanS2VAttnProcessor(),
         )
 
         # 2. Cross-attention
@@ -706,7 +706,7 @@ class WanS2VTransformerBlock(nn.Module):
             eps=eps,
             added_kv_proj_dim=added_kv_proj_dim,
             cross_attention_dim_head=dim // num_heads,
-            processor=WanAttnProcessor(),
+            processor=WanS2VAttnProcessor(),
         )
         self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
