@@ -171,6 +171,7 @@ class WanS2VAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
+            attention_kwargs=attention_kwargs,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
@@ -839,11 +840,11 @@ class WanS2VTransformer3DModel(
         out_channels: int = 16,
         text_dim: int = 4096,
         freq_dim: int = 256,
-        audio_dim: int = 1280,
-        audio_inject_layers: List[int] = [0, 4, 8, 12, 16, 20, 24, 27],
+        audio_dim: int = 1024,
+        audio_inject_layers: List[int] = [0, 4, 8, 12, 16, 20, 24, 27, 30, 33, 36, 39],
         enable_adain: bool = True,
         adain_mode: str = "attn_norm",
-        pose_dim: int = 1280,
+        pose_dim: int = 16,
         ffn_dim: int = 13824,
         num_layers: int = 40,
         cross_attn_norm: bool = True,
@@ -851,9 +852,9 @@ class WanS2VTransformer3DModel(
         eps: float = 1e-6,
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
-        enable_framepack: bool = False,
+        enable_framepack: bool = True,
         framepack_drop_mode: str = "padd",
-        add_last_motion: bool = False,
+        add_last_motion: bool = True,
         zero_timestep: bool = True,
     ) -> None:
         super().__init__()
