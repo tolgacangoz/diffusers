@@ -103,7 +103,6 @@ class WanS2VAttnProcessor:
         rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ) -> torch.Tensor:
-        attention_kwargs = kwargs
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
             # 512 is the context length of the text encoder, hardcoded for now
@@ -158,7 +157,7 @@ class WanS2VAttnProcessor:
                 dropout_p=0.0,
                 is_causal=False,
                 backend=self._attention_backend,
-                attention_kwargs=attention_kwargs,
+                attention_kwargs=kwargs,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
@@ -171,7 +170,7 @@ class WanS2VAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
-            attention_kwargs=attention_kwargs,
+            attention_kwargs=kwargs,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
@@ -1016,10 +1015,16 @@ class WanS2VTransformer3DModel(
             else:
                 attn_hidden_states = self.audio_injector.injector_pre_norm_feat[audio_attn_id](input_hidden_states)
 
+            attention_kwargs = {"max_seqlen_k": torch.ones(
+                attn_hidden_states.shape[0],
+                dtype=torch.long,
+                device=attn_hidden_states.device) * attn_audio_emb.shape[1]}
             residual_out = self.audio_injector.injector[audio_attn_id](
                 attn_hidden_states,
                 attn_audio_emb,
-            )
+                None,
+                None,
+                attention_kwargs)
             residual_out = residual_out.unflatten(0, (-1, merged_audio_emb_num_frames)).flatten(1, 2)
             hidden_states[:, :original_sequence_length] = (
                 hidden_states[:, :original_sequence_length] + residual_out
