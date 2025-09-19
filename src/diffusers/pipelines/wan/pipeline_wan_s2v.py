@@ -905,7 +905,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width).to(
                 device, dtype=torch.float32
             )
-        diffusers['pose_video'] = pose_video.to("cpu")
 
         video_chunks = []
         for r in range(num_chunks):
@@ -995,7 +994,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             )[0]
                             diffusers['noise_uncond'] = noise_uncond.to("cpu")
                             noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
-                        diffusers['noise_uncond'] = noise_uncond.to("cpu")
                     # compute the previous noisy sample x_t -> x_t-1
                     latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
                     diffusers['scheduler_step'] = latents.to("cpu")
