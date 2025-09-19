@@ -861,7 +861,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-
+        diffusers = {}
         # 3. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt=prompt,
@@ -873,7 +873,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
             device=device,
         )
-
+        diffusers['prompt_embeds'] = prompt_embeds.to("cpu")
+        diffusers['negative_prompt_embeds'] = negative_prompt_embeds.to("cpu")
         transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
@@ -886,7 +887,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if num_chunks is None or num_chunks > num_chunks_audio:
             num_chunks = num_chunks_audio
         audio_embeds = audio_embeds.to(transformer_dtype)
-
+        diffusers['audio_embeds'] = audio_embeds.to("cpu")
         latent_motion_frames = (self.motion_frames + 3) // self.vae_scale_factor_temporal
 
         # 5. Prepare latent variables
@@ -904,6 +905,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width).to(
                 device, dtype=torch.float32
             )
+        diffusers['pose_video'] = pose_video.to("cpu")
 
         video_chunks = []
         for r in range(num_chunks):
@@ -928,7 +930,11 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latents, condition, videos_last_pixels, motion_latents, pose_condition = latents_outputs
             else:
                 latents = latents_outputs
-
+            diffusers['latents'] = latents.to("cpu")
+            diffusers['condition'] = condition.to("cpu")
+            diffusers['videos_last_pixels'] = videos_last_pixels.to("cpu")
+            diffusers['motion_latents'] = motion_latents.to("cpu")
+            diffusers['pose_condition'] = pose_condition[r].to("cpu")
             with torch.no_grad():
                 left_idx = r * num_frames_per_chunk
                 right_idx = r * num_frames_per_chunk + num_frames_per_chunk
@@ -940,6 +946,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             # 4. Prepare timesteps by resetting scheduler in each chunk
             self.scheduler.set_timesteps(num_inference_steps, device=device)
             timesteps = self.scheduler.timesteps
+            diffusers['timesteps'] = timesteps.to("cpu")
 
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(timesteps)
@@ -969,6 +976,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
+                    diffusers['noise_pred'] = noise_pred.to("cpu")
 
                     if self.do_classifier_free_guidance:
                         with self.transformer.cache_context("uncond"):
@@ -985,11 +993,12 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,
                             )[0]
+                            diffusers['noise_uncond'] = noise_uncond.to("cpu")
                             noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
-
+                        diffusers['noise_uncond'] = noise_uncond.to("cpu")
                     # compute the previous noisy sample x_t -> x_t-1
                     latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
-
+                    diffusers['scheduler_step'] = latents.to("cpu")
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
@@ -1014,7 +1023,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
             decode_latents = decode_latents.to(self.vae.dtype)
             self.maybe_free_model_hooks()
-            return decode_latents
+            return diffusers
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.z_dim, 1, 1, 1)
