@@ -1032,7 +1032,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             videos_last_pixels = torch.cat([videos_last_pixels[:, :, num_overlap_frames:], video[:, :, -num_overlap_frames:]], dim=2)
 
             # Update motion_latents for next iteration
-            motion_latents = self.vae.encode(videos_last_pixels)
+            motion_latents = retrieve_latents(self.vae.encode(videos_last_pixels), sample_mode="argmax")
             motion_latents = (motion_latents - latents_mean) * latents_std
             
             video_chunks.append(video)
