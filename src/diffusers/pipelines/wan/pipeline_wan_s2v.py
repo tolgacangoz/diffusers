@@ -54,7 +54,7 @@ EXAMPLE_DOC_STRING = """
         >>> import numpy as np, math, requests
         >>> import torch
         >>> from diffusers import AutoencoderKLWan, WanSpeechToVideoPipeline
-        >>> from diffusers.utils import export_to_video, load_audio
+        >>> from diffusers.utils import export_to_video, load_audio, export_to_merged_video_audio
         >>> from transformers import Wav2Vec2ForCTC
         >>> from PIL import Image
         >>> from io import BytesIO
@@ -159,63 +159,7 @@ EXAMPLE_DOC_STRING = """
         >>> # Lastly, we need to merge the video and audio into a new video, with the duration set to
         >>> # the shorter of the two and overwrite the original video file.
 
-        >>> import os, logging, subprocess, shutil
-
-
-        >>> def merge_video_audio(video_path: str, audio_path: str):
-        ...     logging.basicConfig(level=logging.INFO)
-
-        ...     if not os.path.exists(video_path):
-        ...         raise FileNotFoundError(f"video file {video_path} does not exist")
-        ...     if not os.path.exists(audio_path):
-        ...         raise FileNotFoundError(f"audio file {audio_path} does not exist")
-
-        ...     base, ext = os.path.splitext(video_path)
-        ...     temp_output = f"{base}_temp{ext}"
-
-        ...     try:
-        ...         # Create ffmpeg command
-        ...         command = [
-        ...             "ffmpeg",
-        ...             "-y",  # overwrite
-        ...             "-i",
-        ...             video_path,
-        ...             "-i",
-        ...             audio_path,
-        ...             "-c:v",
-        ...             "copy",  # copy video stream
-        ...             "-c:a",
-        ...             "aac",  # use AAC audio encoder
-        ...             "-b:a",
-        ...             "192k",  # set audio bitrate (optional)
-        ...             "-map",
-        ...             "0:v:0",  # select the first video stream
-        ...             "-map",
-        ...             "1:a:0",  # select the first audio stream
-        ...             "-shortest",  # choose the shortest duration
-        ...             temp_output,
-        ...         ]
-
-        ...         # Execute the command
-        ...         logging.info("Start merging video and audio...")
-        ...         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-        ...         # Check result
-        ...         if result.returncode != 0:
-        ...             error_msg = f"FFmpeg execute failed: {result.stderr}"
-        ...             logging.error(error_msg)
-        ...             raise RuntimeError(error_msg)
-
-        ...         shutil.move(temp_output, video_path)
-        ...         logging.info(f"Merge completed, saved to {video_path}")
-
-        ...     except Exception as e:
-        ...         if os.path.exists(temp_output):
-        ...             os.remove(temp_output)
-        ...         logging.error(f"merge_video_audio failed with error: {e}")
-
-
-        >>> merge_video_audio("output.mp4", "audio.mp3")
+        >>> export_to_merged_video_audio("output.mp4", "audio.mp3")
         ```
 """
 
@@ -683,14 +627,14 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 pose_video, num_chunks, num_frames_per_chunk, height, width, latents_mean, latents_std
             )
             # Encode motion latents
+            videos_last_pixels = motion_pixels.detach()
             if init_first_frame:
                 self.drop_first_motion = False
                 motion_pixels[:, :, -6:] = latent_condition
             motion_latents = retrieve_latents(self.vae.encode(motion_pixels), sample_mode="argmax")
             motion_latents = (motion_latents - latents_mean) * latents_std
-            videos_last_latents = motion_latents.detach()
-
-            return latents, latent_condition, videos_last_latents, motion_latents, pose_condition
+            
+            return latents, latent_condition, videos_last_pixels, motion_latents, pose_condition
         else:
             return latents
 
@@ -762,7 +706,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         pose_video_path_or_url: Optional[str] = None,
         height: int = 480,
         width: int = 832,
-        num_frames_per_chunk: int = 81,
+        num_frames_per_chunk: int = 80,
         num_inference_steps: int = 40,
         guidance_scale: float = 4.5,
         num_videos_per_prompt: Optional[int] = 1,
@@ -807,9 +751,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The height of the generated video.
             width (`int`, defaults to `832`):
                 The width of the generated video.
-            num_frames_per_chunk (`int`, defaults to `81`):
-                The number of frames in each chunk of the generated video. `num_frames_per_chunk` - 1 should be a
-                multiple of 4.
+            num_frames_per_chunk (`int`, defaults to `80`):
+                The number of frames in each chunk of the generated video. `num_frames_per_chunk` should be a multiple of 4.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -895,12 +838,12 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             audio_embeds,
         )
 
-        if num_frames_per_chunk % self.vae_scale_factor_temporal != 1:
-            logger.warning(
-                f"`num_frames_per_chunk - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
-            )
+        if num_frames_per_chunk % self.vae_scale_factor_temporal != 0:
             num_frames_per_chunk = (
-                num_frames_per_chunk // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
+                num_frames_per_chunk // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal
+            )
+            logger.warning(
+                f"`num_frames_per_chunk` had to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number: {num_frames_per_chunk}"
             )
         num_frames_per_chunk = max(num_frames_per_chunk, 1)
 
@@ -962,7 +905,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 device, dtype=torch.float32
             )
 
-        all_latents = []
+        video_chunks = []
         for r in range(num_chunks):
             latents_outputs = self.prepare_latents(
                 image if r == 0 else None,
@@ -982,7 +925,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
             if r == 0:
-                latents, condition, videos_last_latents, motion_latents, pose_condition = latents_outputs
+                latents, condition, videos_last_pixels, motion_latents, pose_condition = latents_outputs
             else:
                 latents = latents_outputs
 
@@ -1069,45 +1012,39 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             else:
                 decode_latents = torch.cat([condition, latents], dim=2)
 
-            # Work in latent space - no decode-encode cycle
-            num_latent_frames = (num_frames_per_chunk + 3) // self.vae_scale_factor_temporal
-            segment_latents = decode_latents[:, :, -num_latent_frames:]
-            if self.drop_first_motion and r == 0:
-                segment_latents = segment_latents[:, :, (3 + 3) // self.vae_scale_factor_temporal :]
-
-            num_latent_overlap_frames = min(latent_motion_frames, segment_latents.shape[2])
-            videos_last_latents = torch.cat(
-                [
-                    videos_last_latents[:, :, num_latent_overlap_frames:],
-                    segment_latents[:, :, -num_latent_overlap_frames:],
-                ],
-                dim=2,
+            decode_latents = decode_latents.to(self.vae.dtype)
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, self.vae.config.z_dim, 1, 1, 1)
+                .to(decode_latents.device, decode_latents.dtype)
             )
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                decode_latents.device, decode_latents.dtype
+            )
+            decode_latents = decode_latents / latents_std + latents_mean
+            video = self.vae.decode(decode_latents, return_dict=False)[0]
+            video = video[:, :, -(num_frames_per_chunk):]
+
+            if self.drop_first_motion and r == 0:
+                video = video[:, :, 3:]
+
+            num_overlap_frames = min(self.motion_frames, video.shape[2])
+            videos_last_pixels = torch.cat([videos_last_pixels[:, :, num_overlap_frames:], video[:, :, -num_overlap_frames:]], dim=2)
 
             # Update motion_latents for next iteration
-            motion_latents = videos_last_latents.to(dtype=motion_latents.dtype, device=motion_latents.device)
+            motion_latents = self.vae.encode(videos_last_pixels)
+            motion_latents = (motion_latents - latents_mean) * latents_std
+            
+            video_chunks.append(video)
 
-            # Accumulate latents so as to decode them all at once at the end
-            all_latents.append(segment_latents)
-
-        latents = torch.cat(all_latents, dim=2)
+        video_chunks = torch.cat(video_chunks, dim=2)
 
         self._current_timestep = None
 
         if not output_type == "latent":
-            latents = latents.to(self.vae.dtype)
-            latents_mean = (
-                torch.tensor(self.vae.config.latents_mean)
-                .view(1, self.vae.config.z_dim, 1, 1, 1)
-                .to(latents.device, latents.dtype)
-            )
-            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-                latents.device, latents.dtype
-            )
-            latents = latents / latents_std + latents_mean
-            video = self.vae.decode(latents, return_dict=False)[0]
-            video = self.video_processor.postprocess_video(video, output_type=output_type)
+            video = self.video_processor.postprocess_video(video_chunks, output_type=output_type)
         else:
+            # TODO
             video = latents
 
         # Offload all models
