@@ -568,7 +568,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents: int = 16,
         height: int = 480,
         width: int = 832,
-        num_frames_per_chunk: int = 81,
+        num_frames_per_chunk: int = 80,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -1013,6 +1013,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 decode_latents = torch.cat([condition, latents], dim=2)
 
             decode_latents = decode_latents.to(self.vae.dtype)
+            self.maybe_free_model_hooks()
+            return decode_latents
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.z_dim, 1, 1, 1)
