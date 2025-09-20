@@ -356,6 +356,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         feat = linear_interpolation(feat, input_fps=50, output_fps=video_rate)
 
         audio_embed = feat.to(torch.float32)  # Encoding for the motion
+        asd = {'input_values': input_values, 'feat': feat}
 
         num_layers, audio_frame_num, audio_dim = audio_embed.shape
 
@@ -410,7 +411,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             audio_embed_bucket = audio_embed_bucket.permute(0, 2, 1)
         elif len(audio_embed_bucket.shape) == 4:
             audio_embed_bucket = audio_embed_bucket.permute(0, 2, 3, 1)
-        return audio_embed_bucket, num_repeat
+        return audio_embed_bucket, num_repeat, asd
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
@@ -882,12 +883,14 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         if audio_embeds is None:
-            audio_embeds, num_chunks_audio = self.encode_audio(
+            audio_embeds, num_chunks_audio, asd = self.encode_audio(
                 audio, sampling_rate, num_frames_per_chunk, sampling_fps, device
             )
         if num_chunks is None or num_chunks > num_chunks_audio:
             num_chunks = num_chunks_audio
         audio_embeds = audio_embeds.to(transformer_dtype)
+        diffusers['audio_input_values'] = asd['input_values'].to("cpu")
+        diffusers['audio_feat'] = asd['feat'].to("cpu")
         diffusers['audio_embeds'] = audio_embeds.to("cpu")
         latent_motion_frames = (self.motion_frames + 3) // self.vae_scale_factor_temporal
 
