@@ -348,15 +348,15 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         audio_sample_m = 0
 
         input_values = self.audio_processor(audio, sampling_rate=sampling_rate, return_tensors="pt").input_values
-
+        asd = {'input_values': input_values.detach().clone().to("cpu")}
         # retrieve logits & take argmax
         res = self.audio_encoder(input_values.to(self.audio_encoder.device), output_hidden_states=True)
         feat = torch.cat(res.hidden_states)
+        asd['feat'] = feat.detach().clone().to("cpu")
 
         feat = linear_interpolation(feat, input_fps=50, output_fps=video_rate)
 
         audio_embed = feat.to(torch.float32)  # Encoding for the motion
-        asd = {'input_values': input_values, 'feat': torch.cat(res.hidden_states)}
 
         num_layers, audio_frame_num, audio_dim = audio_embed.shape
 
@@ -610,7 +610,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
                 latents.device, latents.dtype
             )
-
+            asdf = {'vae_before': video_condition.detach().clone().to("cpu")}
             if isinstance(generator, list):
                 latent_condition = [
                     retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
@@ -636,7 +636,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             motion_latents = retrieve_latents(self.vae.encode(motion_pixels), sample_mode="argmax")
             motion_latents = (motion_latents - latents_mean) * latents_std
 
-            return latents, latent_condition, videos_last_pixels, motion_latents, pose_condition
+            return latents, latent_condition, videos_last_pixels, motion_latents, pose_condition, asdf
         else:
             return latents
 
@@ -930,9 +930,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
             if r == 0:
-                latents, condition, videos_last_pixels, motion_latents, pose_condition = latents_outputs
+                latents, condition, videos_last_pixels, motion_latents, pose_condition, asdf = latents_outputs
             else:
                 latents = latents_outputs
+            diffusers['vae_before'] = asdf['vae_before'].detach().clone().to("cpu")
             diffusers['latents'] = latents.detach().clone().to("cpu")
             diffusers['condition'] = condition.detach().clone().to("cpu")
             diffusers['videos_last_pixels'] = videos_last_pixels.detach().clone().to("cpu")
