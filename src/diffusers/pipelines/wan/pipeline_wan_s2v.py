@@ -323,9 +323,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
-        prompt_embeds = torch.stack(
-            [torch.cat([u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))]) for u in prompt_embeds], dim=0
-        )
+        # prompt_embeds = torch.stack(
+        #     [torch.cat([u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))]) for u in prompt_embeds], dim=0
+        # )
+        prompt_embeds = torch.stack(prompt_embeds)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
@@ -352,7 +353,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         res = self.audio_encoder(input_values.to(self.audio_encoder.device), output_hidden_states=True)
         feat = torch.cat(res.hidden_states)
 
-        feat = linear_interpolation(feat, input_fps=50, output_fps=30)
+        feat = linear_interpolation(feat, input_fps=50, output_fps=video_rate)
 
         audio_embed = feat.to(torch.float32)  # Encoding for the motion
 
