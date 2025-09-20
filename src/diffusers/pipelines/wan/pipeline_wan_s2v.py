@@ -633,7 +633,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 motion_pixels[:, :, -6:] = latent_condition
             motion_latents = retrieve_latents(self.vae.encode(motion_pixels), sample_mode="argmax")
             motion_latents = (motion_latents - latents_mean) * latents_std
-            
+
             return latents, latent_condition, videos_last_pixels, motion_latents, pose_condition
         else:
             return latents
@@ -892,7 +892,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
-        image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
+        image = self.video_processor.preprocess(image, height=height, width=width, resize_mode="center_crop").to(device, dtype=torch.float32)
 
         pose_video = None
         if pose_video_path_or_url is not None:
@@ -902,7 +902,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 target_fps=sampling_fps,
                 reverse=True,
             )
-            pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width).to(
+            pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width, resize_mode="center_crop").to(
                 device, dtype=torch.float32
             )
 
@@ -1043,7 +1043,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             # Update motion_latents for next iteration
             motion_latents = retrieve_latents(self.vae.encode(videos_last_pixels), sample_mode="argmax")
             motion_latents = (motion_latents - latents_mean) * latents_std
-            
+
             video_chunks.append(video)
 
         video_chunks = torch.cat(video_chunks, dim=2)
