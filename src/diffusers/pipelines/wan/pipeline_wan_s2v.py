@@ -356,7 +356,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         feat = linear_interpolation(feat, input_fps=50, output_fps=video_rate)
 
         audio_embed = feat.to(torch.float32)  # Encoding for the motion
-        asd = {'input_values': input_values, 'feat': feat}
+        asd = {'input_values': input_values, 'feat': torch.cat(res.hidden_states)}
 
         num_layers, audio_frame_num, audio_dim = audio_embed.shape
 
@@ -890,7 +890,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_chunks = num_chunks_audio
         audio_embeds = audio_embeds.to(transformer_dtype)
         diffusers['audio_input_values'] = asd['input_values'].detach().clone().to("cpu")
-        diffusers['audio_feat'] = asd['feat'].detach().clone().to("cpu")
+        diffusers['audio_after'] = asd['feat'].detach().clone().to("cpu")
         diffusers['audio_embeds'] = audio_embeds.detach().clone().to("cpu")
         latent_motion_frames = (self.motion_frames + 3) // self.vae_scale_factor_temporal
 
