@@ -610,7 +610,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
                 latents.device, latents.dtype
             )
-            asdf = {'vae_before': video_condition.detach().clone().to("cpu")}
+            #asdf = {'vae_before': video_condition.detach().clone().to("cpu")}
             if isinstance(generator, list):
                 latent_condition = [
                     retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
@@ -636,7 +636,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             motion_latents = retrieve_latents(self.vae.encode(motion_pixels), sample_mode="argmax")
             motion_latents = (motion_latents - latents_mean) * latents_std
 
-            return latents, latent_condition, videos_last_pixels, motion_latents, pose_condition, asdf
+            return latents, latent_condition, videos_last_pixels, motion_latents, pose_condition#, asdf
         else:
             return latents
 
@@ -931,7 +931,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
             if r == 0:
-                latents, condition, videos_last_pixels, motion_latents, pose_condition, asdf = latents_outputs
+                #latents, condition, videos_last_pixels, motion_latents, pose_condition, asdf = latents_outputs
+                latents, condition, videos_last_pixels, motion_latents, pose_condition = latents_outputs
             else:
                 latents = latents_outputs
             #diffusers['vae_before'] = asdf['vae_before'].detach().clone().to("cpu")

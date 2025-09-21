@@ -765,10 +765,10 @@ class VaeImageProcessor(ConfigMixin):
                 image = [self.convert_to_rgb(i) for i in image]
             elif self.config.do_convert_grayscale:
                 image = [self.convert_to_grayscale(i) for i in image]
-            asdqwe["after_do_resize"] = image[0]
+            #asdqwe["after_do_resize"] = image[0]
             image = self.pil_to_numpy(image)  # to np
             image = self.numpy_to_pt(image)  # to pt
-            asdqwe["after_pil_to_pt"] = image.detach().clone().to("cpu")
+            #asdqwe["after_pil_to_pt"] = image.detach().clone().to("cpu")
         elif isinstance(image[0], np.ndarray):
             image = np.concatenate(image, axis=0) if image[0].ndim == 4 else np.stack(image, axis=0)
 
