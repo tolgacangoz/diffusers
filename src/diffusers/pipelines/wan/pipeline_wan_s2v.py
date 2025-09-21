@@ -898,7 +898,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents = self.vae.config.z_dim
         image, zxc = self.video_processor.preprocess(image, height=height, width=width, resize_mode="resize_min_center_crop")
         diffusers['after_pil_to_pt'] = zxc['after_pil_to_pt'].detach().clone().to("cpu")
-        diffusers['after_do_resize'] = zxc['after_do_resize'].detach().clone().to("cpu")
+        diffusers['after_do_resize'] = torch.from_numpy(np.array(zxc['after_do_resize'])).detach().clone().to("cpu")
         pose_video = None
         if pose_video_path_or_url is not None:
             pose_video = load_video(
