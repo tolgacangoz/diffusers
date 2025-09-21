@@ -1026,7 +1026,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 decode_latents = torch.cat([condition, latents], dim=2)
 
             decode_latents = decode_latents.to(self.vae.dtype)
-            self.maybe_free_model_hooks()
+
             #return diffusers
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
