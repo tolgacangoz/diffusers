@@ -323,9 +323,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
-        # prompt_embeds = torch.stack(
-        #     [torch.cat([u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))]) for u in prompt_embeds], dim=0
-        # )
+        prompt_embeds = torch.stack(
+            [torch.cat([u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))]) for u in prompt_embeds], dim=0
+        )
         prompt_embeds = torch.stack(prompt_embeds)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -348,11 +348,11 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         audio_sample_m = 0
 
         input_values = self.audio_processor(audio, sampling_rate=sampling_rate, return_tensors="pt").input_values
-        asd = {'input_values': input_values.detach().clone().to("cpu")}
+        #asd = {'input_values': input_values.detach().clone().to("cpu")}
         # retrieve logits & take argmax
         res = self.audio_encoder(input_values.to(self.audio_encoder.device), output_hidden_states=True)
         feat = torch.cat(res.hidden_states)
-        asd['feat'] = feat.detach().clone().to("cpu")
+        #asd['feat'] = feat.detach().clone().to("cpu")
 
         feat = linear_interpolation(feat, input_fps=50, output_fps=video_rate)
 
@@ -411,7 +411,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             audio_embed_bucket = audio_embed_bucket.permute(0, 2, 1)
         elif len(audio_embed_bucket.shape) == 4:
             audio_embed_bucket = audio_embed_bucket.permute(0, 2, 3, 1)
-        return audio_embed_bucket, num_repeat, asd
+        return audio_embed_bucket, num_repeat#, asd
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
@@ -883,7 +883,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         if audio_embeds is None:
-            audio_embeds, num_chunks_audio, asd = self.encode_audio(
+            audio_embeds, num_chunks_audio = self.encode_audio(
                 audio, sampling_rate, num_frames_per_chunk, sampling_fps, device
             )
         if num_chunks is None or num_chunks > num_chunks_audio:
