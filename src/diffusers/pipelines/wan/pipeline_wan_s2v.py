@@ -326,7 +326,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt_embeds = torch.stack(
             [torch.cat([u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))]) for u in prompt_embeds], dim=0
         )
-        prompt_embeds = torch.stack(prompt_embeds)
+        #prompt_embeds = torch.stack(prompt_embeds)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
