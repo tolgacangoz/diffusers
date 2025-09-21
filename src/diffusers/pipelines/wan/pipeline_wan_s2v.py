@@ -883,7 +883,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         if audio_embeds is None:
-            audio_embeds, num_chunks_audio = self.encode_audio(
+            audio_embeds, num_chunks_audio, asd = self.encode_audio(
                 audio, sampling_rate, num_frames_per_chunk, sampling_fps, device
             )
         if num_chunks is None or num_chunks > num_chunks_audio:
