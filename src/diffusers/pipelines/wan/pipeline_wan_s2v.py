@@ -896,7 +896,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
-        image = self.video_processor.preprocess(image, height=height, width=width, resize_mode="center_crop").to(device, dtype=torch.float32)
+        image = self.video_processor.preprocess(image, height=height, width=width, resize_mode="resize_min_center_crop").to(device, dtype=torch.float32)
 
         pose_video = None
         if pose_video_path_or_url is not None:
@@ -906,7 +906,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 target_fps=sampling_fps,
                 reverse=True,
             )
-            pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width, resize_mode="center_crop").to(
+            pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width, resize_mode="resize_min_center_crop").to(
                 device, dtype=torch.float32
             )
 

@@ -437,10 +437,11 @@ class VaeImageProcessor(ConfigMixin):
         image: PIL.Image.Image,
         width: int,
         height: int,
+        resize_type: str = "fit_within",
+        crop_type: str = "paste_center",
     ) -> PIL.Image.Image:
         r"""
-        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center
-        the image within the dimensions, cropping the excess.
+        Resize and crop the image using different strategies.
 
         Args:
             image (`PIL.Image.Image`):
@@ -449,69 +450,89 @@ class VaeImageProcessor(ConfigMixin):
                 The width to resize the image to.
             height (`int`):
                 The height to resize the image to.
+            resize_type (`str`, optional):
+                How to resize the image. Options:
+                - "fit_within": Resize to fit within dimensions, maintaining aspect ratio (default)
+                - "min_dimension": Resize so smaller dimension becomes min(width, height)
+            crop_type (`str`, optional):
+                How to handle the final cropping/positioning. Options:
+                - "paste_center": Paste resized image on centered canvas, pad with black (default)
+                - "center_crop": Center crop to exact dimensions, pad with black if needed
 
         Returns:
             `PIL.Image.Image`:
                 The resized and cropped image.
         """
-        ratio = width / height
-        src_ratio = image.width / image.height
 
-        src_w = width if ratio > src_ratio else image.width * height // image.height
-        src_h = height if ratio <= src_ratio else image.height * width // image.width
+        if resize_type == "fit_within":
+            # Resize to fit within dimensions
+            ratio = width / height
+            src_ratio = image.width / image.height
 
-        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION["lanczos"])
-        res = Image.new("RGB", (width, height))
-        res.paste(resized, box=(width // 2 - src_w // 2, height // 2 - src_h // 2))
-        return res
+            src_w = width if ratio > src_ratio else image.width * height // image.height
+            src_h = height if ratio <= src_ratio else image.height * width // image.width
 
-    def _resize_and_center_crop(
-        self,
-        image: PIL.Image.Image,
-        width: int,
-        height: int,
-    ) -> PIL.Image.Image:
-        r"""
-        Resize the image so that the smaller dimension becomes min(width, height), maintaining the aspect ratio,
-        and then center crop to the exact target dimensions. This matches the Wan2.2 preprocessing approach:
-        transforms.Resize(min(HEIGHT, WIDTH)) + transforms.CenterCrop((HEIGHT, WIDTH)).
+            resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
 
-        Args:
-            image (`PIL.Image.Image`):
-                The image to resize and center crop.
-            width (`int`):
-                The width to resize the image to.
-            height (`int`):
-                The height to resize the image to.
+        elif resize_type == "min_dimension":
+            # Resize so smaller dimension becomes min(width, height)
+            min_target_dim = min(width, height)
 
-        Returns:
-            `PIL.Image.Image`:
-                The resized and center cropped image.
-        """
-        # Step 1: Resize so smaller dimension becomes min(width, height)
-        min_target_dim = min(width, height)
-        scale = min_target_dim / min(image.width, image.height)
+            # Calculate scale based on smaller dimension only
+            if image.width <= image.height:
+                # Width is smaller, resize based on width
+                scale = min_target_dim / image.width
+            else:
+                # Height is smaller, resize based on height
+                scale = min_target_dim / image.height
 
-        new_width = int(image.width * scale)
-        new_height = int(image.height * scale)
+            src_w = int(image.width * scale)
+            src_h = int(image.height * scale)
 
-        resized = image.resize((new_width, new_height), resample=PIL_INTERPOLATION[self.config.resample])
+            resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
 
-        # Step 2: Center crop to exact target dimensions
-        left = (new_width - width) // 2
-        top = (new_height - height) // 2
-        right = left + width
-        bottom = top + height
+        else:
+            raise ValueError(f"Unknown resize_type: {resize_type}")
 
-        cropped = resized.crop((left, top, right, bottom))
-        return cropped
+
+        if crop_type == "paste_center":
+            # Paste on canvas, center position
+            res = Image.new("RGB", (width, height), color=0)  # Black background
+            res.paste(resized, box=(width // 2 - src_w // 2, height // 2 - src_h // 2))
+            return res
+
+        elif crop_type == "center_crop":
+            # Center crop to exact dimensions, pad if needed
+            # Handle case where crop size might be larger than resized image
+            crop_width = min(width, resized.width)
+            crop_height = min(height, resized.height)
+
+            left = (resized.width - crop_width) // 2
+            top = (resized.height - crop_height) // 2
+            right = left + crop_width
+            bottom = top + crop_height
+
+            cropped = resized.crop((left, top, right, bottom))
+
+            # If cropped image is smaller than target, pad with black
+            if cropped.size != (width, height):
+                result = Image.new("RGB", (width, height), color=0)  # Black background
+                paste_x = (width - cropped.width) // 2
+                paste_y = (height - cropped.height) // 2
+                result.paste(cropped, (paste_x, paste_y))
+                return result
+
+            return cropped
+
+        else:
+            raise ValueError(f"Unknown crop_type: {crop_type}")
 
     def resize(
         self,
         image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
         height: int,
         width: int,
-        resize_mode: str = "default",  # "default", "fill", "crop"
+        resize_mode: str = "default",  # "default", "fill", "crop", "resize_min_center_crop"
     ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
         """
         Resize image.
@@ -524,14 +545,14 @@ class VaeImageProcessor(ConfigMixin):
             width (`int`):
                 The width to resize to.
             resize_mode (`str`, *optional*, defaults to `default`):
-                The resize mode to use, can be one of `default`, `fill`, `crop`, or `center_crop`. If `default`, will
+                The resize mode to use, can be one of `default`, `fill`, `crop`, or `resize_min_center_crop`. If `default`, will
                 resize the image to fit within the specified width and height, and it may not maintaining the original
                 aspect ratio. If `fill`, will resize the image to fit within the specified width and height, maintaining
                 the aspect ratio, and then center the image within the dimensions, filling empty with data from image.
                 If `crop`, will resize the image to fit within the specified width and height, maintaining the aspect
-                ratio, and then center the image within the dimensions, cropping the excess. If `center_crop`, will
+                ratio, and then center the image within the dimensions, cropping the excess. If `resize_min_center_crop`, will
                 resize the image so that the smaller dimension becomes min(width, height), then center crop to exact
-                target dimensions (matches Wan2.2 preprocessing). Note that resize_mode `fill`, `crop`, and `center_crop`
+                target dimensions (matches Wan2.2 preprocessing). Note that resize_mode `fill`, `crop`, and `resize_min_center_crop`
                 are only supported for PIL image input.
 
         Returns:
@@ -551,8 +572,8 @@ class VaeImageProcessor(ConfigMixin):
                 image = self._resize_and_fill(image, width, height)
             elif resize_mode == "crop":
                 image = self._resize_and_crop(image, width, height)
-            elif resize_mode == "center_crop":
-                image = self._resize_and_center_crop(image, width, height)
+            elif resize_mode == "resize_min_center_crop":
+                image = self._resize_and_crop(image, width, height, resize_type="min_dimension", crop_type="center_crop")
             else:
                 raise ValueError(f"resize_mode {resize_mode} is not supported")
 
@@ -660,7 +681,7 @@ class VaeImageProcessor(ConfigMixin):
         image: PipelineImageInput,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        resize_mode: str = "default",  # "default", "fill", "crop", "center_crop"
+        resize_mode: str = "default",  # "default", "fill", "crop", "resize_min_center_crop"
         crops_coords: Optional[Tuple[int, int, int, int]] = None,
     ) -> torch.Tensor:
         """
@@ -676,14 +697,14 @@ class VaeImageProcessor(ConfigMixin):
             width (`int`, *optional*):
                 The width in preprocessed. If `None`, will use get_default_height_width()` to get the default width.
             resize_mode (`str`, *optional*, defaults to `default`):
-                The resize mode, can be one of `default`, `fill`, `crop`, or `center_crop`. If `default`, will resize
+                The resize mode, can be one of `default`, `fill`, `crop`, or `resize_min_center_crop`. If `default`, will resize
                 the image to fit within the specified width and height, and it may not maintaining the original aspect
                 ratio. If `fill`, will resize the image to fit within the specified width and height, maintaining the
                 aspect ratio, and then center the image within the dimensions, filling empty with data from image. If
                 `crop`, will resize the image to fit within the specified width and height, maintaining the aspect ratio,
-                and then center the image within the dimensions, cropping the excess. If `center_crop`, will resize the
+                and then center the image within the dimensions, cropping the excess. If `resize_min_center_crop`, will resize the
                 image so that the smaller dimension becomes min(width, height), then center crop to exact target
-                dimensions (matches Wan2.2 preprocessing). Note that resize_mode `fill`, `crop`, and `center_crop` are
+                dimensions (matches Wan2.2 preprocessing). Note that resize_mode `fill`, `crop`, and `resize_min_center_crop` are
                 only supported for PIL image input.
             crops_coords (`List[Tuple[int, int, int, int]]`, *optional*, defaults to `None`):
                 The crop coordinates for each image in the batch. If `None`, will not crop the image.
