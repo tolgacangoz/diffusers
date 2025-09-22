@@ -609,7 +609,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
                 latents.device, latents.dtype
             )
-            asdf = {'vae_before': video_condition.detach().clone().to("cpu")}
+            #asdf = {'vae_before': video_condition.detach().clone().to("cpu")}
             if isinstance(generator, list):
                 latent_condition = [
                     retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
@@ -631,11 +631,11 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             videos_last_pixels = motion_pixels.detach()
             if init_first_frame:
                 self.drop_first_motion = False
-                motion_pixels[:, :, -6:] = latent_condition
+                motion_pixels[:, :, -6:] = video_condition
             motion_latents = retrieve_latents(self.vae.encode(motion_pixels), sample_mode="argmax")
             motion_latents = (motion_latents - latents_mean) * latents_std
 
-            return latents, latent_condition, videos_last_pixels, motion_latents, pose_condition, asdf
+            return latents, latent_condition, videos_last_pixels, motion_latents, pose_condition, 3
         else:
             return latents
 
@@ -874,8 +874,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
             device=device,
         )
-        diffusers['prompt_embeds'] = prompt_embeds.detach().clone().to("cpu")
-        diffusers['negative_prompt_embeds'] = negative_prompt_embeds.detach().clone().to("cpu")
+        #diffusers['prompt_embeds'] = prompt_embeds.detach().clone().to("cpu")
+        #diffusers['negative_prompt_embeds'] = negative_prompt_embeds.detach().clone().to("cpu")
         transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
@@ -888,16 +888,16 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if num_chunks is None or num_chunks > num_chunks_audio:
             num_chunks = num_chunks_audio
         audio_embeds = audio_embeds.to(transformer_dtype)
-        diffusers['audio_input_values'] = asd['input_values'].detach().clone().to("cpu")
-        diffusers['audio_after'] = asd['feat'].detach().clone().to("cpu")
-        diffusers['audio_embeds'] = audio_embeds.detach().clone().to("cpu")
+        #diffusers['audio_input_values'] = asd['input_values'].detach().clone().to("cpu")
+        #diffusers['audio_after'] = asd['feat'].detach().clone().to("cpu")
+        #diffusers['audio_embeds'] = audio_embeds.detach().clone().to("cpu")
         latent_motion_frames = (self.motion_frames + 3) // self.vae_scale_factor_temporal
 
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
         image, zxc = self.video_processor.preprocess(image, height=height, width=width, resize_mode="resize_min_center_crop")
-        diffusers['after_do_resize'] = torch.from_numpy(np.array(zxc['after_do_resize'])).detach().clone().to("cpu")
-        diffusers['after_pil_to_pt'] = zxc['after_pil_to_pt'].detach().clone().to("cpu")
+        #diffusers['after_do_resize'] = torch.from_numpy(np.array(zxc['after_do_resize'])).detach().clone().to("cpu")
+        #diffusers['after_pil_to_pt'] = zxc['after_pil_to_pt'].detach().clone().to("cpu")
         pose_video = None
         if pose_video_path_or_url is not None:
             pose_video = load_video(
@@ -933,12 +933,12 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latents, condition, videos_last_pixels, motion_latents, pose_condition, asdf = latents_outputs
             else:
                 latents = latents_outputs
-            diffusers['vae_before'] = asdf['vae_before'].detach().clone().to("cpu")
-            diffusers['latents'] = latents.detach().clone().to("cpu")
-            diffusers['condition'] = condition.detach().clone().to("cpu")
-            diffusers['videos_last_pixels'] = videos_last_pixels.detach().clone().to("cpu")
-            diffusers['motion_latents'] = motion_latents.detach().clone().to("cpu")
-            diffusers['pose_condition'] = pose_condition[r].detach().clone().to("cpu")
+            #diffusers['vae_before'] = asdf['vae_before'].detach().clone().to("cpu")
+            #diffusers['latents'] = latents.detach().clone().to("cpu")
+            #diffusers['condition'] = condition.detach().clone().to("cpu")
+            #diffusers['videos_last_pixels'] = videos_last_pixels.detach().clone().to("cpu")
+            #diffusers['motion_latents'] = motion_latents.detach().clone().to("cpu")
+            #diffusers['pose_condition'] = pose_condition[r].detach().clone().to("cpu")
             with torch.no_grad():
                 left_idx = r * num_frames_per_chunk
                 right_idx = r * num_frames_per_chunk + num_frames_per_chunk
@@ -950,7 +950,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             # 4. Prepare timesteps by resetting scheduler in each chunk
             self.scheduler.set_timesteps(num_inference_steps, device=device)
             timesteps = self.scheduler.timesteps
-            diffusers['timesteps'] = timesteps.detach().clone().to("cpu")
+            #diffusers['timesteps'] = timesteps.detach().clone().to("cpu")
 
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(timesteps)
@@ -980,7 +980,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
-                    diffusers['noise_pred'] = noise_pred.detach().clone().to("cpu")
+                    #diffusers['noise_pred'] = noise_pred.detach().clone().to("cpu")
 
                     if self.do_classifier_free_guidance:
                         with self.transformer.cache_context("uncond"):
@@ -997,11 +997,11 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,
                             )[0]
-                            diffusers['noise_uncond'] = noise_uncond.detach().clone().to("cpu")
+                            #diffusers['noise_uncond'] = noise_uncond.detach().clone().to("cpu")
                             noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
                     # compute the previous noisy sample x_t -> x_t-1
                     latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
-                    diffusers['scheduler_step'] = latents.detach().clone().to("cpu")
+                    #diffusers['scheduler_step'] = latents.detach().clone().to("cpu")
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
@@ -1025,9 +1025,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 decode_latents = torch.cat([condition, latents], dim=2)
 
             decode_latents = decode_latents.to(self.vae.dtype)
-            self.maybe_free_model_hooks()
+            #self.maybe_free_model_hooks()
 
-            return diffusers
+            #return diffusers
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.z_dim, 1, 1, 1)
