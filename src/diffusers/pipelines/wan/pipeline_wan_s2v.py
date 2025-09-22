@@ -897,8 +897,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
         image, zxc = self.video_processor.preprocess(image, height=height, width=width, resize_mode="resize_min_center_crop")
-        diffusers['after_pil_to_pt'] = zxc['after_pil_to_pt'].detach().clone().to("cpu")
         diffusers['after_do_resize'] = torch.from_numpy(np.array(zxc['after_do_resize'])).detach().clone().to("cpu")
+        diffusers['after_pil_to_pt'] = zxc['after_pil_to_pt'].detach().clone().to("cpu")
         pose_video = None
         if pose_video_path_or_url is not None:
             pose_video = load_video(
@@ -932,7 +932,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
             if r == 0:
                 latents, condition, videos_last_pixels, motion_latents, pose_condition, asdf = latents_outputs
-                #latents, condition, videos_last_pixels, motion_latents, pose_condition = latents_outputs
             else:
                 latents = latents_outputs
             diffusers['vae_before'] = asdf['vae_before'].detach().clone().to("cpu")
@@ -1027,6 +1026,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 decode_latents = torch.cat([condition, latents], dim=2)
 
             decode_latents = decode_latents.to(self.vae.dtype)
+            self.maybe_free_model_hooks()
 
             return diffusers
             latents_mean = (

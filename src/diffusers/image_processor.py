@@ -473,57 +473,35 @@ class VaeImageProcessor(ConfigMixin):
             src_h = height if ratio <= src_ratio else image.height * width // image.width
 
             resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
-
         elif resize_type == "min_dimension":
-            # Resize so smaller dimension becomes min(width, height)
-            min_target_dim = min(width, height)
+            # # Resize so smaller dimension becomes min(width, height)
+            # min_target_dim = min(width, height)
 
-            # Calculate scale based on smaller dimension only
-            if image.width <= image.height:
-                # Width is smaller, resize based on width
-                scale = min_target_dim / image.width
-            else:
-                # Height is smaller, resize based on height
-                scale = min_target_dim / image.height
+            # # Calculate scale based on smaller dimension only
+            # if image.width <= image.height:
+            #     # Width is smaller, resize based on width
+            #     scale = min_target_dim / image.width
+            # else:
+            #     # Height is smaller, resize based on height
+            #     scale = min_target_dim / image.height
 
-            src_w = int(image.width * scale)
-            src_h = int(image.height * scale)
+            # src_w = int(image.width * scale)
+            # src_h = int(image.height * scale)
 
-            resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
-
+            # resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
+            from torchvision.transforms import Resize
+            resized = Resize(min(height, width))(image)
         else:
             raise ValueError(f"Unknown resize_type: {resize_type}")
-
 
         if crop_type == "paste_center":
             # Paste on canvas, center position
             res = Image.new("RGB", (width, height), color=0)  # Black background
             res.paste(resized, box=(width // 2 - src_w // 2, height // 2 - src_h // 2))
             return res
-
         elif crop_type == "center_crop":
-            # Center crop to exact dimensions, pad if needed
-            # Handle case where crop size might be larger than resized image
-            crop_width = min(width, resized.width)
-            crop_height = min(height, resized.height)
-
-            left = (resized.width - crop_width) // 2
-            top = (resized.height - crop_height) // 2
-            right = left + crop_width
-            bottom = top + crop_height
-
-            cropped = resized.crop((left, top, right, bottom))
-
-            # If cropped image is smaller than target, pad with black
-            if cropped.size != (width, height):
-                result = Image.new("RGB", (width, height), color=0)  # Black background
-                paste_x = (width - cropped.width) // 2
-                paste_y = (height - cropped.height) // 2
-                result.paste(cropped, (paste_x, paste_y))
-                return result
-
-            return cropped
-
+            from torchvision.transforms import CenterCrop
+            return CenterCrop((height, width))(resized)
         else:
             raise ValueError(f"Unknown crop_type: {crop_type}")
 
