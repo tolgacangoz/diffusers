@@ -490,6 +490,7 @@ class VaeImageProcessor(ConfigMixin):
 
             # resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
             from torchvision.transforms import Resize
+
             resized = Resize(min(height, width))(image)
         else:
             raise ValueError(f"Unknown resize_type: {resize_type}")
@@ -501,6 +502,7 @@ class VaeImageProcessor(ConfigMixin):
             return res
         elif crop_type == "center_crop":
             from torchvision.transforms import CenterCrop
+
             return CenterCrop((height, width))(resized)
         else:
             raise ValueError(f"Unknown crop_type: {crop_type}")
@@ -523,15 +525,15 @@ class VaeImageProcessor(ConfigMixin):
             width (`int`):
                 The width to resize to.
             resize_mode (`str`, *optional*, defaults to `default`):
-                The resize mode to use, can be one of `default`, `fill`, `crop`, or `resize_min_center_crop`. If `default`, will
-                resize the image to fit within the specified width and height, and it may not maintaining the original
-                aspect ratio. If `fill`, will resize the image to fit within the specified width and height, maintaining
-                the aspect ratio, and then center the image within the dimensions, filling empty with data from image.
-                If `crop`, will resize the image to fit within the specified width and height, maintaining the aspect
-                ratio, and then center the image within the dimensions, cropping the excess. If `resize_min_center_crop`, will
-                resize the image so that the smaller dimension becomes min(width, height), then center crop to exact
-                target dimensions (matches Wan2.2 preprocessing). Note that resize_mode `fill`, `crop`, and `resize_min_center_crop`
-                are only supported for PIL image input.
+                The resize mode to use, can be one of `default`, `fill`, `crop`, or `resize_min_center_crop`. If
+                `default`, will resize the image to fit within the specified width and height, and it may not
+                maintaining the original aspect ratio. If `fill`, will resize the image to fit within the specified
+                width and height, maintaining the aspect ratio, and then center the image within the dimensions,
+                filling empty with data from image. If `crop`, will resize the image to fit within the specified width
+                and height, maintaining the aspect ratio, and then center the image within the dimensions, cropping the
+                excess. If `resize_min_center_crop`, will resize the image so that the smaller dimension becomes
+                min(width, height), then center crop to exact target dimensions (matches Wan2.2 preprocessing). Note
+                that resize_mode `fill`, `crop`, and `resize_min_center_crop` are only supported for PIL image input.
 
         Returns:
             `PIL.Image.Image`, `np.ndarray` or `torch.Tensor`:
@@ -551,7 +553,9 @@ class VaeImageProcessor(ConfigMixin):
             elif resize_mode == "crop":
                 image = self._resize_and_crop(image, width, height)
             elif resize_mode == "resize_min_center_crop":
-                image = self._resize_and_crop(image, width, height, resize_type="min_dimension", crop_type="center_crop")
+                image = self._resize_and_crop(
+                    image, width, height, resize_type="min_dimension", crop_type="center_crop"
+                )
             else:
                 raise ValueError(f"resize_mode {resize_mode} is not supported")
 
@@ -675,15 +679,15 @@ class VaeImageProcessor(ConfigMixin):
             width (`int`, *optional*):
                 The width in preprocessed. If `None`, will use get_default_height_width()` to get the default width.
             resize_mode (`str`, *optional*, defaults to `default`):
-                The resize mode, can be one of `default`, `fill`, `crop`, or `resize_min_center_crop`. If `default`, will resize
-                the image to fit within the specified width and height, and it may not maintaining the original aspect
-                ratio. If `fill`, will resize the image to fit within the specified width and height, maintaining the
-                aspect ratio, and then center the image within the dimensions, filling empty with data from image. If
-                `crop`, will resize the image to fit within the specified width and height, maintaining the aspect ratio,
-                and then center the image within the dimensions, cropping the excess. If `resize_min_center_crop`, will resize the
-                image so that the smaller dimension becomes min(width, height), then center crop to exact target
-                dimensions (matches Wan2.2 preprocessing). Note that resize_mode `fill`, `crop`, and `resize_min_center_crop` are
-                only supported for PIL image input.
+                The resize mode, can be one of `default`, `fill`, `crop`, or `resize_min_center_crop`. If `default`,
+                will resize the image to fit within the specified width and height, and it may not maintaining the
+                original aspect ratio. If `fill`, will resize the image to fit within the specified width and height,
+                maintaining the aspect ratio, and then center the image within the dimensions, filling empty with data
+                from image. If `crop`, will resize the image to fit within the specified width and height, maintaining
+                the aspect ratio, and then center the image within the dimensions, cropping the excess. If
+                `resize_min_center_crop`, will resize the image so that the smaller dimension becomes min(width,
+                height), then center crop to exact target dimensions (matches Wan2.2 preprocessing). Note that
+                resize_mode `fill`, `crop`, and `resize_min_center_crop` are only supported for PIL image input.
             crops_coords (`List[Tuple[int, int, int, int]]`, *optional*, defaults to `None`):
                 The crop coordinates for each image in the batch. If `None`, will not crop the image.
 
@@ -692,7 +696,6 @@ class VaeImageProcessor(ConfigMixin):
                 The preprocessed image.
         """
         supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
-        asdqwe = {}
         # Expand the missing dimension for 3-dimensional pytorch tensor or numpy array that represents grayscale image
         if self.config.do_convert_grayscale and isinstance(image, (torch.Tensor, np.ndarray)) and image.ndim == 3:
             if isinstance(image, torch.Tensor):
@@ -743,10 +746,8 @@ class VaeImageProcessor(ConfigMixin):
                 image = [self.convert_to_rgb(i) for i in image]
             elif self.config.do_convert_grayscale:
                 image = [self.convert_to_grayscale(i) for i in image]
-            asdqwe["after_do_resize"] = image[0]
             image = self.pil_to_numpy(image)  # to np
             image = self.numpy_to_pt(image)  # to pt
-            asdqwe["after_pil_to_pt"] = image.detach().clone().to("cpu")
         elif isinstance(image[0], np.ndarray):
             image = np.concatenate(image, axis=0) if image[0].ndim == 4 else np.stack(image, axis=0)
 
@@ -786,7 +787,7 @@ class VaeImageProcessor(ConfigMixin):
         if self.config.do_binarize:
             image = self.binarize(image)
 
-        return image, asdqwe
+        return image
 
     def postprocess(
         self,
