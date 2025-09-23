@@ -620,6 +620,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
 
             latent_condition = latent_condition.to(dtype)
+            asdf['vae_after'] = latent_condition.detach().clone().to("cpu")
             latent_condition = (latent_condition - latents_mean) * latents_std
 
             motion_pixels = torch.zeros([1, 3, self.motion_frames, height, width], dtype=self.vae.dtype, device=device)
@@ -934,6 +935,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             else:
                 latents = latents_outputs
             diffusers['vae_before'] = asdf['vae_before'].detach().clone().to("cpu")
+            diffusers['vae_after'] = asdf['vae_after'].detach().clone().to("cpu")
             diffusers['latents'] = latents.detach().clone().to("cpu")
             diffusers['condition'] = condition.detach().clone().to("cpu")
             diffusers['videos_last_pixels'] = videos_last_pixels.detach().clone().to("cpu")
