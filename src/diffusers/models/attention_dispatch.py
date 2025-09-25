@@ -556,7 +556,7 @@ def _flash_attention(
     window_size: Tuple[int, int] = (-1, -1),
     softcap: float = 0.0,
     alibi_slopes: Optional[torch.Tensor] = None,
-    deterministic: bool = True,
+    deterministic: bool = False,
     return_attn_probs: bool = False,
 ) -> torch.Tensor:
     out = flash_attn_func(
@@ -593,7 +593,7 @@ def _flash_varlen_attention(
     window_size: Tuple[int, int] = (-1, -1),
     softcap: float = 0.0,
     alibi_slopes: Optional[torch.Tensor] = None,
-    deterministic: bool = True,
+    deterministic: bool = False,
     return_attn_probs: bool = False,
     attn_mask: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
