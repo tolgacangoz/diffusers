@@ -94,7 +94,6 @@ class ConvLayer(nn.Module):
 
         self.conv2d = nn.Conv2d(in_channel, out_channel, kernel_size, stride, padding, bias=bias and not activate)
 
-
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         if self.downsample:
             input = self.blur_conv(input)
