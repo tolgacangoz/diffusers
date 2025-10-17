@@ -348,7 +348,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         input_values = self.audio_processor(audio, sampling_rate=sampling_rate, return_tensors="pt").input_values
         # retrieve logits & take argmax
-        res = self.audio_encoder(input_values.to(self.audio_encoder.device), output_hidden_states=True)
+        res = self.audio_encoder(input_values.to(device), output_hidden_states=True)
         feat = torch.cat(res.hidden_states)
 
         feat = linear_interpolation(feat, input_fps=50, output_fps=video_rate)
@@ -639,14 +639,16 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def load_pose_condition(
         self, pose_video, num_chunks, num_frames_per_chunk, height, width, latents_mean, latents_std
     ):
+        device = self._execution_device
+        dtype = self.vae.dtype
         if pose_video is not None:
             padding_frame_num = num_chunks * num_frames_per_chunk - pose_video.shape[2]
-            pose_video = pose_video.to(dtype=self.vae.dtype, device=self.vae.device)
+            pose_video = pose_video.to(dtype=dtype, device=device)
             pose_video = torch.cat(
                 [
                     pose_video,
                     -torch.ones(
-                        [1, 3, padding_frame_num, height, width], dtype=self.vae.dtype, device=self.vae.device
+                        [1, 3, padding_frame_num, height, width], dtype=dtype, device=device
                     ),
                 ],
                 dim=2,
@@ -655,7 +657,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             pose_video = torch.chunk(pose_video, num_chunks, dim=2)
         else:
             pose_video = [
-                -torch.ones([1, 3, num_frames_per_chunk, height, width], dtype=self.vae.dtype, device=self.vae.device)
+                -torch.ones([1, 3, num_frames_per_chunk, height, width], dtype=dtype, device=device)
             ]
 
         # Vectorized processing: concatenate all chunks along batch dimension
