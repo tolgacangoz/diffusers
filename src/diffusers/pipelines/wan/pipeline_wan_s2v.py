@@ -647,18 +647,14 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             pose_video = torch.cat(
                 [
                     pose_video,
-                    -torch.ones(
-                        [1, 3, padding_frame_num, height, width], dtype=dtype, device=device
-                    ),
+                    -torch.ones([1, 3, padding_frame_num, height, width], dtype=dtype, device=device),
                 ],
                 dim=2,
             )
 
             pose_video = torch.chunk(pose_video, num_chunks, dim=2)
         else:
-            pose_video = [
-                -torch.ones([1, 3, num_frames_per_chunk, height, width], dtype=dtype, device=device)
-            ]
+            pose_video = [-torch.ones([1, 3, num_frames_per_chunk, height, width], dtype=dtype, device=device)]
 
         # Vectorized processing: concatenate all chunks along batch dimension
         all_poses = torch.cat(
