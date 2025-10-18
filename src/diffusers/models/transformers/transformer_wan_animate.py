@@ -375,7 +375,7 @@ class WanAnimateTransformerBlock(nn.Module):
 
         return hidden_states
 
-
+# TODO: Consider Wan's attention block/processor
 class WanAnimateFaceBlock(nn.Module):
     _attention_backend = None
     _parallel_config = None
