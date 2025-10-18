@@ -150,9 +150,13 @@ ANIMATE_TRANSFORMER_KEYS_RENAME_DICT = {
     "cross_attn.o": "attn2.to_out.0",
     "cross_attn.norm_q": "attn2.norm_q",
     "cross_attn.norm_k": "attn2.norm_k",
-    "cross_attn.k_img": "attn2.add_k_proj",
-    "cross_attn.v_img": "attn2.add_v_proj",
-    "cross_attn.norm_k_img": "attn2.norm_added_k",
+    "cross_attn.k_img": "attn2.to_k_img",
+    "cross_attn.v_img": "attn2.to_v_img",
+    "cross_attn.norm_k_img": "attn2.norm_k_img",
+    # After cross_attn -> attn2 rename, we need to rename the img keys
+    "attn2.to_k_img": "attn2.add_k_proj",
+    "attn2.to_v_img": "attn2.add_v_proj",
+    "attn2.norm_k_img": "attn2.norm_added_k",
     # Motion encoder mappings
     "motion_encoder.enc.net_app.convs": "condition_embedder.motion_embedder.convs",
     "motion_encoder.enc.fc": "condition_embedder.motion_embedder.linears",
@@ -613,6 +617,14 @@ def convert_transformer(model_type: str, stage: str = None):
             if special_key not in key:
                 continue
             handler_fn_inplace(key, original_state_dict)
+
+    # For Animate model, add blur_conv weights from the initialized model
+    # These are procedurally generated in the diffusers ConvLayer and not present in original checkpoint
+    if "Animate" in model_type:
+        temp_model_state = transformer.state_dict()
+        for key in temp_model_state.keys():
+            if "blur_conv.weight" in key and "motion_embedder" in key:
+                original_state_dict[key] = temp_model_state[key]
 
     transformer.load_state_dict(original_state_dict, strict=True, assign=True)
     return transformer
