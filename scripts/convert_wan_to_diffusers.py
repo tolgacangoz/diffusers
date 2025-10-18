@@ -1192,9 +1192,11 @@ def convert_openclip_xlm_roberta_vit_to_clip_vision_model():
         elif new_key == "patch_embedding.bias":
             clip_vision_state_dict["vision_model.embeddings.patch_embedding.bias"] = value
         elif new_key == "cls_embedding":
-            clip_vision_state_dict["vision_model.embeddings.class_embedding"] = value
+            # Remove extra batch dimension: [1, 1, 1280] -> [1280]
+            clip_vision_state_dict["vision_model.embeddings.class_embedding"] = value.squeeze()
         elif new_key == "pos_embedding":
-            clip_vision_state_dict["vision_model.embeddings.position_embedding.weight"] = value
+            # Remove extra batch dimension: [1, 257, 1280] -> [257, 1280]
+            clip_vision_state_dict["vision_model.embeddings.position_embedding.weight"] = value.squeeze(0)
 
         # Pre-norm (if exists)
         elif new_key == "pre_norm.weight":
@@ -1202,10 +1204,11 @@ def convert_openclip_xlm_roberta_vit_to_clip_vision_model():
         elif new_key == "pre_norm.bias":
             clip_vision_state_dict["vision_model.pre_layrnorm.bias"] = value
 
-        # Post-norm (skip - not used with 31 blocks)
-        elif new_key.startswith("post_norm."):
-            # Skip post-norm as we're using only 31 blocks
-            continue
+        # Post-norm - final layer norm after transformer blocks
+        elif new_key == "post_norm.weight":
+            clip_vision_state_dict["vision_model.post_layernorm.weight"] = value
+        elif new_key == "post_norm.bias":
+            clip_vision_state_dict["vision_model.post_layernorm.bias"] = value
 
         # Transformer layers (only first 31 layers, skip layer 31 which is index 31)
         elif new_key.startswith("transformer."):
