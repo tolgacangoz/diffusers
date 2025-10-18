@@ -427,7 +427,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         conditioning_pixel_values: Optional[torch.Tensor] = None,
-        refer_pixel_values: Optional[torch.Tensor] = None,
         refer_t_pixel_values: Optional[torch.Tensor] = None,
         bg_pixel_values: Optional[torch.Tensor] = None,
         mask_pixel_values: Optional[torch.Tensor] = None,
@@ -450,16 +449,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             latents = latents.to(device=device, dtype=dtype)
 
-        image = image.unsqueeze(2)  # [batch_size, channels, 1, height, width]
-
-        video_condition = torch.cat(
-            [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
-        )
-
-        video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
-        conditioning_pixel_values = conditioning_pixel_values.to(device=device, dtype=self.vae.dtype)
-        refer_pixel_values = refer_pixel_values.to(device=device, dtype=self.vae.dtype)
-
+        # Prepare latent normalization parameters
         latents_mean = (
             torch.tensor(self.vae.config.latents_mean)
             .view(1, self.vae.config.z_dim, 1, 1, 1)
@@ -469,28 +459,40 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents.device, latents.dtype
         )
 
+        # Encode reference image for y_ref (single frame, not video)
+        ref_image = image.unsqueeze(2)  # [batch_size, channels, 1, height, width]
+        ref_image = ref_image.to(device=device, dtype=self.vae.dtype)
+
         if isinstance(generator, list):
-            latent_condition = [
-                retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
-            ]
-            latent_condition = torch.cat(latent_condition)
+            ref_latents = [retrieve_latents(self.vae.encode(ref_image), sample_mode="argmax") for _ in generator]
+            ref_latents = torch.cat(ref_latents)
+        else:
+            ref_latents = retrieve_latents(self.vae.encode(ref_image), sample_mode="argmax")
+            ref_latents = ref_latents.repeat(batch_size, 1, 1, 1, 1)
+
+        # Encode conditioning (pose) video
+        conditioning_pixel_values = conditioning_pixel_values.to(device=device, dtype=self.vae.dtype)
+
+        if isinstance(generator, list):
             pose_latents_no_ref = [
                 retrieve_latents(self.vae.encode(conditioning_pixel_values), sample_mode="argmax") for _ in generator
             ]
             pose_latents_no_ref = torch.cat(pose_latents_no_ref)
         else:
-            latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
-            latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
             pose_latents_no_ref = retrieve_latents(
                 self.vae.encode(conditioning_pixel_values.to(self.vae.dtype)), sample_mode="argmax"
             )
             pose_latents_no_ref = pose_latents_no_ref.repeat(batch_size, 1, 1, 1, 1)
 
-        latent_condition = latent_condition.to(dtype)
-        latent_condition = (latent_condition - latents_mean) * latents_std
+        ref_latents = ref_latents.to(dtype)
+        ref_latents = (ref_latents - latents_mean) * latents_std
         pose_latents_no_ref = pose_latents_no_ref.to(dtype)
         pose_latents = (pose_latents_no_ref - latents_mean) * latents_std
-        # pose_latents = torch.cat([pose_latents_no_ref], dim=2)
+
+        # Create y_ref from ref_latents (equivalent to original's mask_ref + ref_latents)
+        # mask_ref has 1 frame, ref_latents has 1 frame
+        mask_ref = self.get_i2v_mask(batch_size, 1, latent_height, latent_width, 1, None, device)
+        y_ref = torch.concat([mask_ref, ref_latents], dim=1).to(dtype=dtype, device=device)
 
         if mode == "replacement":
             mask_pixel_values = 1 - mask_pixel_values
@@ -541,7 +543,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
 
         y_reft = torch.concat([msk_reft, y_reft]).to(dtype=dtype, device=device)
-        y = torch.concat([pose_latents, y_reft], dim=1)
+        y = torch.concat([y_ref, y_reft], dim=1)
 
         return latents, pose_latents, y
 
@@ -849,8 +851,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             conditioning_pixel_values = pose_video[start:end]
             face_pixel_values = face_video[start:end]
 
-            refer_pixel_values = image
-
             out_frames = None
             if start == 0:
                 refer_t_pixel_values = torch.zeros(image.shape[0], 3, num_frames_for_temporal_guidance, height, width)
@@ -865,14 +865,14 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 bg_pixel_values = background_video[start:end]
                 mask_pixel_values = mask_video[start:end]  # .permute(0, 3, 1, 2).unsqueeze(0)
                 mask_pixel_values = mask_pixel_values.to(device=device, dtype=torch.bfloat16)
+                bg_pixel_values = bg_pixel_values.to(device=device, dtype=torch.bfloat16)
             else:
                 mask_pixel_values = None
+                bg_pixel_values = None
 
             conditioning_pixel_values = conditioning_pixel_values.to(device=device, dtype=torch.bfloat16)
             face_pixel_values = face_pixel_values.to(device=device, dtype=torch.bfloat16)
-            refer_pixel_values = refer_pixel_values.to(device=device, dtype=torch.bfloat16)
             refer_t_pixel_values = refer_t_pixel_values.to(device=device, dtype=torch.bfloat16)
-            bg_pixel_values = bg_pixel_values.to(device=device, dtype=torch.bfloat16)
 
             latents_outputs = self.prepare_latents(
                 image,
@@ -886,7 +886,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 generator,
                 latents,
                 conditioning_pixel_values,
-                refer_pixel_values,
                 refer_t_pixel_values,
                 bg_pixel_values,
                 mask_pixel_values,

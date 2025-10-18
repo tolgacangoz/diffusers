@@ -7,7 +7,15 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download, snapshot_download
 from safetensors.torch import load_file
-from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModel, CLIPVisionModelWithProjection, UMT5EncoderModel
+from transformers import (
+    AutoProcessor,
+    AutoTokenizer,
+    CLIPImageProcessor,
+    CLIPVisionConfig,
+    CLIPVisionModel,
+    CLIPVisionModelWithProjection,
+    UMT5EncoderModel,
+)
 
 from diffusers import (
     AutoencoderKLWan,
@@ -142,9 +150,9 @@ ANIMATE_TRANSFORMER_KEYS_RENAME_DICT = {
     "cross_attn.o": "attn2.to_out.0",
     "cross_attn.norm_q": "attn2.norm_q",
     "cross_attn.norm_k": "attn2.norm_k",
-    "attn2.to_k_img": "attn2.add_k_proj",
-    "attn2.to_v_img": "attn2.add_v_proj",
-    "attn2.norm_k_img": "attn2.norm_added_k",
+    "cross_attn.k_img": "attn2.add_k_proj",
+    "cross_attn.v_img": "attn2.add_v_proj",
+    "cross_attn.norm_k_img": "attn2.norm_added_k",
     # Motion encoder mappings
     "motion_encoder.enc.net_app.convs": "condition_embedder.motion_embedder.convs",
     "motion_encoder.enc.fc": "condition_embedder.motion_embedder.linears",
@@ -1109,6 +1117,155 @@ def convert_vae_22():
     return vae
 
 
+def convert_openclip_xlm_roberta_vit_to_clip_vision_model():
+    """
+    Convert OpenCLIP XLM-RoBERTa-CLIP vision encoder to HuggingFace CLIPVisionModel format.
+
+    The original checkpoint contains a multimodal XLM-RoBERTa-CLIP model with:
+    - Vision encoder: ViT-Huge/14 (1280 dim, 32 layers, 16 heads, patch_size=14)
+    - Text encoder: XLM-RoBERTa-Large (not used in Wan2.2-Animate)
+
+    We extract only the vision encoder and convert it to CLIPVisionModel format.
+
+    IMPORTANT: The original uses use_31_block=True (returns features from first 31 blocks only).
+    We convert only the first 31 layers to match this behavior exactly.
+    """
+    # Download the OpenCLIP checkpoint
+    checkpoint_path = hf_hub_download(
+        "Wan-AI/Wan2.2-Animate-14B",
+        "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth"
+    )
+
+    # Load the checkpoint
+    openclip_state_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+
+    # Create mapping from OpenCLIP vision encoder to CLIPVisionModel
+    # OpenCLIP uses "visual." prefix, we need to map to CLIPVisionModel structure
+    clip_vision_state_dict = {}
+
+    # Mapping rules:
+    # visual.patch_embedding.weight -> vision_model.embeddings.patch_embedding.weight
+    # visual.patch_embedding.bias -> vision_model.embeddings.patch_embedding.bias
+    # visual.cls_embedding -> vision_model.embeddings.class_embedding
+    # visual.pos_embedding -> vision_model.embeddings.position_embedding.weight
+    # visual.transformer.{i}.norm1.weight -> vision_model.encoder.layers.{i}.layer_norm1.weight
+    # visual.transformer.{i}.norm1.bias -> vision_model.encoder.layers.{i}.layer_norm1.bias
+    # visual.transformer.{i}.attn.to_qkv.weight -> split into to_q, to_k, to_v
+    # visual.transformer.{i}.attn.proj.weight -> vision_model.encoder.layers.{i}.self_attn.out_proj.weight
+    # visual.transformer.{i}.norm2.weight -> vision_model.encoder.layers.{i}.layer_norm2.weight
+    # visual.transformer.{i}.mlp.0.weight -> vision_model.encoder.layers.{i}.mlp.fc1.weight
+    # visual.transformer.{i}.mlp.2.weight -> vision_model.encoder.layers.{i}.mlp.fc2.weight
+    # visual.pre_norm -> vision_model.pre_layrnorm (if exists)
+    # visual.post_norm -> vision_model.post_layernorm (if exists)
+
+    for key, value in openclip_state_dict.items():
+        if not key.startswith("visual."):
+            # Skip text encoder and other components
+            continue
+
+        # Remove "visual." prefix
+        new_key = key[7:]  # Remove "visual."
+
+        # Embeddings
+        if new_key == "patch_embedding.weight":
+            clip_vision_state_dict["vision_model.embeddings.patch_embedding.weight"] = value
+        elif new_key == "patch_embedding.bias":
+            clip_vision_state_dict["vision_model.embeddings.patch_embedding.bias"] = value
+        elif new_key == "cls_embedding":
+            clip_vision_state_dict["vision_model.embeddings.class_embedding"] = value
+        elif new_key == "pos_embedding":
+            clip_vision_state_dict["vision_model.embeddings.position_embedding.weight"] = value
+
+        # Pre-norm (if exists)
+        elif new_key == "pre_norm.weight":
+            clip_vision_state_dict["vision_model.pre_layrnorm.weight"] = value
+        elif new_key == "pre_norm.bias":
+            clip_vision_state_dict["vision_model.pre_layrnorm.bias"] = value
+
+        # Post-norm (skip - not used with 31 blocks)
+        elif new_key.startswith("post_norm."):
+            # Skip post-norm as we're using only 31 blocks
+            continue
+
+        # Transformer layers (only first 31 layers, skip layer 31 which is index 31)
+        elif new_key.startswith("transformer."):
+            parts = new_key.split(".")
+            if len(parts) >= 3:
+                layer_idx = int(parts[1])
+
+                # Skip the 32nd layer (index 31) to match use_31_block=True
+                if layer_idx >= 31:
+                    continue
+
+                component = ".".join(parts[2:])
+
+                # Layer norm 1
+                if component == "norm1.weight":
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.layer_norm1.weight"] = value
+                elif component == "norm1.bias":
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.layer_norm1.bias"] = value
+
+                # Attention - QKV split
+                elif component == "attn.to_qkv.weight":
+                    # Split QKV into separate Q, K, V
+                    qkv = value
+                    dim = qkv.shape[0] // 3
+                    q, k, v = qkv.chunk(3, dim=0)
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.q_proj.weight"] = q
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.k_proj.weight"] = k
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.v_proj.weight"] = v
+                elif component == "attn.to_qkv.bias":
+                    # Split QKV bias
+                    qkv_bias = value
+                    dim = qkv_bias.shape[0] // 3
+                    q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.q_proj.bias"] = q_bias
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.k_proj.bias"] = k_bias
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.v_proj.bias"] = v_bias
+
+                # Attention output projection
+                elif component == "attn.proj.weight":
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.out_proj.weight"] = value
+                elif component == "attn.proj.bias":
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.out_proj.bias"] = value
+
+                # Layer norm 2
+                elif component == "norm2.weight":
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.layer_norm2.weight"] = value
+                elif component == "norm2.bias":
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.layer_norm2.bias"] = value
+
+                # MLP
+                elif component.startswith("mlp.0."):
+                    # First linear layer
+                    mlp_component = component[6:]  # Remove "mlp.0."
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.mlp.fc1.{mlp_component}"] = value
+                elif component.startswith("mlp.2."):
+                    # Second linear layer (after activation)
+                    mlp_component = component[6:]  # Remove "mlp.2."
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.mlp.fc2.{mlp_component}"] = value
+
+    # Create CLIPVisionModel with matching config
+    # Use 31 layers to match the original use_31_block=True behavior
+    config = CLIPVisionConfig(
+        hidden_size=1280,
+        intermediate_size=5120,  # 1280 * 4 (mlp_ratio)
+        num_hidden_layers=31,  # Only first 31 layers, matching use_31_block=True
+        num_attention_heads=16,
+        image_size=224,
+        patch_size=14,
+        hidden_act="gelu",
+        layer_norm_eps=1e-5,
+        attention_dropout=0.0,
+        projection_dim=1024,  # embed_dim from original config
+    )
+
+    with init_empty_weights():
+        vision_model = CLIPVisionModel(config)
+
+    vision_model.load_state_dict(clip_vision_state_dict, strict=True, assign=True)
+    return vision_model
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_type", type=str, default=None)
@@ -1220,10 +1377,24 @@ if __name__ == "__main__":
             scheduler=scheduler,
         )
     elif "Animate" in args.model_type:
-        image_encoder = CLIPVisionModel.from_pretrained(
-            "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", torch_dtype=torch.bfloat16
+        # Convert OpenCLIP XLM-RoBERTa-CLIP vision encoder to CLIPVisionModel
+        print("Converting XLM-RoBERTa-CLIP vision encoder from OpenCLIP checkpoint...")
+        image_encoder = convert_openclip_xlm_roberta_vit_to_clip_vision_model()
+
+        # Create image processor for ViT-Huge/14 with 224x224 images
+        image_processor = CLIPImageProcessor(
+            size={"shortest_edge": 224},
+            crop_size={"height": 224, "width": 224},
+            do_center_crop=True,
+            do_normalize=True,
+            do_rescale=True,
+            do_resize=True,
+            image_mean=[0.48145466, 0.4578275, 0.40821073],
+            image_std=[0.26862954, 0.26130258, 0.27577711],
+            resample=3,  # PIL.Image.BICUBIC
+            rescale_factor=0.00392156862745098,  # 1/255
         )
-        image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+
         pipe = WanAnimatePipeline(
             transformer=transformer,
             text_encoder=text_encoder,
