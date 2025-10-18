@@ -157,10 +157,13 @@ ANIMATE_TRANSFORMER_KEYS_RENAME_DICT = {
     "motion_encoder.enc.net_app.convs": "condition_embedder.motion_embedder.convs",
     "motion_encoder.enc.fc": "condition_embedder.motion_embedder.linears",
     "motion_encoder.dec.direction.weight": "condition_embedder.motion_embedder.weight",
-    # Face encoder mappings
-    "face_encoder.conv1_local": "condition_embedder.face_embedder.conv1_local",
-    "face_encoder.conv2": "condition_embedder.face_embedder.conv2",
-    "face_encoder.conv3": "condition_embedder.face_embedder.conv3",
+    # Face encoder mappings - CausalConv1d has a .conv submodule that we need to flatten
+    "face_encoder.conv1_local.conv.weight": "condition_embedder.face_embedder.conv1_local.weight",
+    "face_encoder.conv1_local.conv.bias": "condition_embedder.face_embedder.conv1_local.bias",
+    "face_encoder.conv2.conv.weight": "condition_embedder.face_embedder.conv2.weight",
+    "face_encoder.conv2.conv.bias": "condition_embedder.face_embedder.conv2.bias",
+    "face_encoder.conv3.conv.weight": "condition_embedder.face_embedder.conv3.weight",
+    "face_encoder.conv3.conv.bias": "condition_embedder.face_embedder.conv3.bias",
     "face_encoder.out_proj": "condition_embedder.face_embedder.out_proj",
     "face_encoder.norm1": "condition_embedder.face_embedder.norm1",
     "face_encoder.norm2": "condition_embedder.face_embedder.norm2",
@@ -241,23 +244,28 @@ def convert_animate_motion_encoder_weights(key: str, state_dict: Dict[str, Any])
         # - convs.0.1.bias -> convs.0.bias_leaky_relu (FusedLeakyReLU)
         # - convs.1.conv1.1.weight -> convs.1.conv1.conv2d.weight (ResBlock ConvLayer)
         # - convs.1.conv1.2.bias -> convs.1.conv1.bias_leaky_relu (ResBlock FusedLeakyReLU)
-        # - convs.7.weight -> unchanged (final EqualConv2d, not in Sequential)
+        # - convs.8.weight -> unchanged (final Conv2d, not in Sequential)
 
         # Check if we have a digit as second-to-last part before .weight or .bias
-        if len(parts) >= 2 and parts[-2].isdigit():
-            if key.endswith(".weight"):
-                # Replace digit index with 'conv2d' for EqualConv2d weight parameters
-                parts[-2] = "conv2d"
-                new_key = ".".join(parts)
-                state_dict[new_key] = state_dict.pop(key)
-                # Update key for subsequent processing
-                key = new_key
-            elif key.endswith(".bias"):
-                # Replace digit index + .bias with 'bias_leaky_relu' for FusedLeakyReLU bias
-                new_key = ".".join(parts[:-2]) + ".bias_leaky_relu"
-                state_dict[new_key] = state_dict.pop(key)
-                # Bias doesn't need scaling, we're done
-                return
+        # But we need to distinguish between Sequential indices (convs.X.Y.weight)
+        # and ModuleList indices (convs.X.weight)
+        # We only rename if there are at least 3 parts after finding 'convs'
+        convs_idx = parts.index("convs") if "convs" in parts else -1
+        if convs_idx >= 0 and len(parts) - convs_idx > 3:  # e.g., ['convs', '0', '0', 'weight'] has 4 parts after convs
+            if len(parts) >= 2 and parts[-2].isdigit():
+                if key.endswith(".weight"):
+                    # Replace digit index with 'conv2d' for EqualConv2d weight parameters
+                    parts[-2] = "conv2d"
+                    new_key = ".".join(parts)
+                    state_dict[new_key] = state_dict.pop(key)
+                    # Update key for subsequent processing
+                    key = new_key
+                elif key.endswith(".bias"):
+                    # Replace digit index + .bias with 'bias_leaky_relu' for FusedLeakyReLU bias
+                    new_key = ".".join(parts[:-2]) + ".bias_leaky_relu"
+                    state_dict[new_key] = state_dict.pop(key)
+                    # Bias doesn't need scaling, we're done
+                    return
 
     # Skip blur_conv weights that are already initialized in diffusers
     if "blur_conv.weight" in key:
