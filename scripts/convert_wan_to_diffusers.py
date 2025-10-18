@@ -621,12 +621,21 @@ def convert_transformer(model_type: str, stage: str = None):
     # For Animate model, add blur_conv weights from the initialized model
     # These are procedurally generated in the diffusers ConvLayer and not present in original checkpoint
     if "Animate" in model_type:
-        temp_model_state = transformer.state_dict()
+        # Create a temporary model on CPU to get the blur_conv weights
+        with torch.device("cpu"):
+            temp_transformer = WanAnimateTransformer3DModel.from_config(diffusers_config)
+        temp_model_state = temp_transformer.state_dict()
         for key in temp_model_state.keys():
             if "blur_conv.weight" in key and "motion_embedder" in key:
                 original_state_dict[key] = temp_model_state[key]
+        del temp_transformer
 
+    # Load state dict into the meta model, which will materialize the tensors
     transformer.load_state_dict(original_state_dict, strict=True, assign=True)
+
+    # Move to CPU to ensure all tensors are materialized
+    transformer = transformer.to("cpu")
+
     return transformer
 
 
@@ -1286,7 +1295,12 @@ def convert_openclip_xlm_roberta_vit_to_clip_vision_model():
     with init_empty_weights():
         vision_model = CLIPVisionModel(config)
 
+    # Load state dict into the meta model, which will materialize the tensors
     vision_model.load_state_dict(clip_vision_state_dict, strict=True, assign=True)
+
+    # Move to CPU to ensure all tensors are materialized
+    vision_model = vision_model.to("cpu")
+
     return vision_model
 
 def get_args():
