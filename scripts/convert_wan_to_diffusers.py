@@ -1413,4 +1413,7 @@ if __name__ == "__main__":
             scheduler=scheduler,
         )
 
-    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+    pipe.save_pretrained(args.output_path,
+                         safe_serialization=True, max_shard_size="5GB",
+                         push_to_hub=True,
+                         repo_id="tolgacangoz/Wan2.2-Animate-14B-Diffusers",)
