@@ -407,10 +407,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
         if num_frames_for_temporal_guidance is not None and (
-            not isinstance(num_frames_for_temporal_guidance, int) or num_frames_for_temporal_guidance <= 0
+            not isinstance(num_frames_for_temporal_guidance, int) or not num_frames_for_temporal_guidance in (1, 5)
         ):
             raise ValueError(
-                f"`num_frames_for_temporal_guidance` has to be of type `int` and > 0 but its type is {type(num_frames_for_temporal_guidance)} and value is {num_frames_for_temporal_guidance}"
+                f"`num_frames_for_temporal_guidance` has to be of type `int` and 1 or 5 but its type is {type(num_frames_for_temporal_guidance)} and value is {num_frames_for_temporal_guidance}"
             )
 
     def prepare_latents(
