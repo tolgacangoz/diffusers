@@ -285,7 +285,6 @@ class WanTimeTextImageMotionFaceEmbedding(nn.Module):
         return temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image, motion_vec
 
 
-# TODO: Consider Wan's attention block/processor
 class WanAnimateFaceBlock(nn.Module):
     _attention_backend = None
     _parallel_config = None
@@ -294,6 +293,7 @@ class WanAnimateFaceBlock(nn.Module):
         self,
         hidden_size: int,
         heads_num: int,
+        eps: float = 1e-6,
     ):
         super().__init__()
         self.heads_num = heads_num
@@ -303,11 +303,19 @@ class WanAnimateFaceBlock(nn.Module):
         self.linear1_q = nn.Linear(hidden_size, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
 
-        self.q_norm = nn.RMSNorm(head_dim, eps=1e-6)
-        self.k_norm = nn.RMSNorm(head_dim, eps=1e-6)
+        self.q_norm = nn.RMSNorm(head_dim, eps)
+        self.k_norm = nn.RMSNorm(head_dim, eps)
 
-        self.pre_norm_feat = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.pre_norm_motion = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.pre_norm_feat = nn.LayerNorm(hidden_size, eps, elementwise_affine=False)
+        self.pre_norm_motion = nn.LayerNorm(hidden_size, eps, elementwise_affine=False)
+
+    def set_attention_backend(self, backend):
+        """Set the attention backend for this face block."""
+        self._attention_backend = backend
+
+    def set_parallel_config(self, config):
+        """Set the parallel configuration for this face block."""
+        self._parallel_config = config
 
     def forward(
         self,
@@ -462,6 +470,39 @@ class WanAnimateTransformer3DModel(
         self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
 
         self.gradient_checkpointing = False
+
+    def set_attention_backend(self, backend: str):
+        """
+        Set the attention backend for the transformer and all face adapter blocks.
+
+        Args:
+            backend (`str`): The attention backend to use (e.g., 'flash', 'sdpa', 'xformers').
+        """
+        from ..attention_dispatch import AttentionBackendName
+
+        # Validate backend
+        available_backends = {x.value for x in AttentionBackendName.__members__.values()}
+        if backend not in available_backends:
+            raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
+
+        backend_enum = AttentionBackendName(backend.lower())
+
+        # Call parent ModelMixin method to set backend for all attention modules
+        super().set_attention_backend(backend)
+
+        # Also set backend for all face adapter blocks (which use dispatch_attention_fn directly)
+        for face_block in self.face_adapter:
+            face_block.set_attention_backend(backend_enum)
+
+    def set_parallel_config(self, config):
+        """
+        Set the parallel configuration for all face adapter blocks.
+
+        Args:
+            config: The parallel configuration to use.
+        """
+        for face_block in self.face_adapter:
+            face_block.set_parallel_config(config)
 
     def forward(
         self,
