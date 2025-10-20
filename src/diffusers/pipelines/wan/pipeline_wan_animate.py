@@ -189,7 +189,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
-        self.video_processor_for_mask = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, do_normalize=False)
+        self.video_processor_for_mask = VideoProcessor(
+            vae_scale_factor=self.vae_scale_factor_spatial, do_normalize=False
+        )
         self.image_processor = image_processor
 
     def _get_t5_prompt_embeds(
@@ -408,7 +410,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
         if num_frames_for_temporal_guidance is not None and (
-            not isinstance(num_frames_for_temporal_guidance, int) or not num_frames_for_temporal_guidance in (1, 5)
+            not isinstance(num_frames_for_temporal_guidance, int) or num_frames_for_temporal_guidance not in (1, 5)
         ):
             raise ValueError(
                 f"`num_frames_for_temporal_guidance` has to be of type `int` and 1 or 5 but its type is {type(num_frames_for_temporal_guidance)} and value is {num_frames_for_temporal_guidance}"
@@ -506,7 +508,11 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 y_reft = retrieve_latents(
                     self.vae.encode(
                         torch.concat(
-                            [refer_t_pixel_values[0, :, :mask_reft_len], background_pixel_values[0, :, mask_reft_len:]], dim=1
+                            [
+                                refer_t_pixel_values[0, :, :mask_reft_len],
+                                background_pixel_values[0, :, mask_reft_len:],
+                            ],
+                            dim=1,
                         )
                     ),
                     sample_mode="argmax",
@@ -863,7 +869,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 refer_t_pixel_values = torch.zeros(image.shape[0], 3, num_frames_for_temporal_guidance, height, width)
             elif start > 0:
                 # TODO: Verify if removing  and adding the first dim necessary
-                refer_t_pixel_values = out_frames[0, :, -num_frames_for_temporal_guidance:].clone().detach().unsqueeze(0)
+                refer_t_pixel_values = (
+                    out_frames[0, :, -num_frames_for_temporal_guidance:].clone().detach().unsqueeze(0)
+                )
 
             if mode == "replacement":
                 background_pixel_values = background_video[start:end]

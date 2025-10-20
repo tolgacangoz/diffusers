@@ -255,7 +255,9 @@ def convert_animate_motion_encoder_weights(key: str, state_dict: Dict[str, Any])
         # and ModuleList indices (convs.X.weight)
         # We only rename if there are at least 3 parts after finding 'convs'
         convs_idx = parts.index("convs") if "convs" in parts else -1
-        if convs_idx >= 0 and len(parts) - convs_idx > 3:  # e.g., ['convs', '0', '0', 'weight'] has 4 parts after convs
+        if (
+            convs_idx >= 0 and len(parts) - convs_idx > 3
+        ):  # e.g., ['convs', '0', '0', 'weight'] has 4 parts after convs
             if len(parts) >= 2 and parts[-2].isdigit():
                 if key.endswith(".weight"):
                     # Replace digit index with 'conv2d' for EqualConv2d weight parameters
@@ -1161,8 +1163,7 @@ def convert_openclip_xlm_roberta_vit_to_clip_vision_model():
     """
     # Download the OpenCLIP checkpoint
     checkpoint_path = hf_hub_download(
-        "Wan-AI/Wan2.2-Animate-14B",
-        "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth"
+        "Wan-AI/Wan2.2-Animate-14B", "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth"
     )
 
     # Load the checkpoint
@@ -1241,7 +1242,6 @@ def convert_openclip_xlm_roberta_vit_to_clip_vision_model():
                 elif component == "attn.to_qkv.weight":
                     # Split QKV into separate Q, K, V
                     qkv = value
-                    dim = qkv.shape[0] // 3
                     q, k, v = qkv.chunk(3, dim=0)
                     clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.q_proj.weight"] = q
                     clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.k_proj.weight"] = k
@@ -1249,7 +1249,6 @@ def convert_openclip_xlm_roberta_vit_to_clip_vision_model():
                 elif component == "attn.to_qkv.bias":
                     # Split QKV bias
                     qkv_bias = value
-                    dim = qkv_bias.shape[0] // 3
                     q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
                     clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.q_proj.bias"] = q_bias
                     clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.k_proj.bias"] = k_bias
@@ -1257,7 +1256,9 @@ def convert_openclip_xlm_roberta_vit_to_clip_vision_model():
 
                 # Attention output projection
                 elif component == "attn.proj.weight":
-                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.out_proj.weight"] = value
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.out_proj.weight"] = (
+                        value
+                    )
                 elif component == "attn.proj.bias":
                     clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.out_proj.bias"] = value
 
@@ -1302,6 +1303,7 @@ def convert_openclip_xlm_roberta_vit_to_clip_vision_model():
     vision_model = vision_model.to("cpu")
 
     return vision_model
+
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -1450,7 +1452,10 @@ if __name__ == "__main__":
             scheduler=scheduler,
         )
 
-    pipe.save_pretrained(args.output_path,
-                         safe_serialization=True, max_shard_size="5GB",
-                         push_to_hub=True,
-                         repo_id="tolgacangoz/Wan2.2-Animate-14B-Diffusers",)
+    pipe.save_pretrained(
+        args.output_path,
+        safe_serialization=True,
+        max_shard_size="5GB",
+        push_to_hub=True,
+        repo_id="tolgacangoz/Wan2.2-Animate-14B-Diffusers",
+    )

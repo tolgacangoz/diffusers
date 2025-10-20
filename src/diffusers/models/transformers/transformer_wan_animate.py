@@ -14,7 +14,7 @@
 
 import math
 from typing import Any, Dict, Optional, Tuple, Union
-import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -22,8 +22,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import AttentionMixin, FeedForward
+from ..attention import AttentionMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
@@ -31,11 +30,9 @@ from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import FP32LayerNorm
 from .transformer_wan import (
-    WanAttention,
-    WanAttnProcessor,
+    WanImageEmbedding,
     WanRotaryPosEmbed,
     WanTransformerBlock,
-    WanImageEmbedding,
 )
 
 
@@ -224,7 +221,6 @@ class WanAnimateFaceEmbedder(nn.Module):
         return x_local
 
 
-
 class WanTimeTextImageMotionFaceEmbedding(nn.Module):
     def __init__(
         self,
@@ -401,7 +397,14 @@ class WanAnimateTransformer3DModel(
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
     _no_split_modules = ["WanAnimateTransformerBlock"]
-    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3", "motion_synthesis_weight"]
+    _keep_in_fp32_modules = [
+        "time_embedder",
+        "scale_shift_table",
+        "norm1",
+        "norm2",
+        "norm3",
+        "motion_synthesis_weight",
+    ]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
     @register_to_config
@@ -545,8 +548,8 @@ class WanAnimateTransformer3DModel(
         # Add pose embeddings to hidden states
         hidden_states[:, :, 1:] = hidden_states[:, :, 1:] + pose_hidden_states[:, :, 1:]
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
-        #sequence_length = int(math.ceil(np.prod([post_patch_num_frames, post_patch_height, post_patch_width]) // 4))
-        #hidden_states = torch.cat([hidden_states, hidden_states.new_zeros(hidden_states.shape[0], sequence_length - hidden_states.shape[1], hidden_states.shape[2])], dim=1)
+        # sequence_length = int(math.ceil(np.prod([post_patch_num_frames, post_patch_height, post_patch_width]) // 4))
+        # hidden_states = torch.cat([hidden_states, hidden_states.new_zeros(hidden_states.shape[0], sequence_length - hidden_states.shape[1], hidden_states.shape[2])], dim=1)
         pose_hidden_states = pose_hidden_states.flatten(2).transpose(1, 2)
 
         # 3. Condition embeddings (time, text, image, motion)
