@@ -160,7 +160,7 @@ ANIMATE_TRANSFORMER_KEYS_RENAME_DICT = {
     # Motion encoder mappings
     "motion_encoder.enc.net_app.convs": "condition_embedder.motion_embedder.convs",
     "motion_encoder.enc.fc": "condition_embedder.motion_embedder.linears",
-    "motion_encoder.dec.direction.weight": "condition_embedder.motion_embedder.weight",
+    "motion_encoder.dec.direction.weight": "condition_embedder.motion_embedder.motion_synthesis_weight",
     # Face encoder mappings - CausalConv1d has a .conv submodule that we need to flatten
     "face_encoder.conv1_local.conv.weight": "condition_embedder.face_embedder.conv1_local.weight",
     "face_encoder.conv1_local.conv.bias": "condition_embedder.face_embedder.conv1_local.bias",
