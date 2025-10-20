@@ -493,7 +493,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         refer_t_pixel_values = refer_t_pixel_values.to(self.vae.dtype)
         background_pixel_values = background_pixel_values.to(self.vae.dtype)
 
-        if mode == "replacement":
+        if mode == "replacement" and mask_pixel_values is not None:
             mask_pixel_values = 1 - mask_pixel_values
             mask_pixel_values = mask_pixel_values.flatten(0, 1)
             mask_pixel_values = F.interpolate(mask_pixel_values, size=(latent_height, latent_width), mode="nearest")
@@ -565,7 +565,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             condition = torch.concat([y_ref, y_reft], dim=2)
 
         if mask_reft_len == 0 and not calculate_noise_latents_only:
-            return latents, condition, pose_latents, y_ref
+            return latents, condition, pose_latents, y_ref, mask_pixel_values
         elif mask_reft_len > 0 and not calculate_noise_latents_only:
             return latents, condition
         elif mask_reft_len > 0 and calculate_noise_latents_only:
@@ -865,7 +865,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         start = 0
         end = num_frames
         all_out_frames = []
-        out_frames = None  # TODO: Is this necessary?
+        out_frames = None
         y_ref = None
         calculate_noise_latents_only = False
 
@@ -912,15 +912,15 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 conditioning_pixel_values,
                 refer_t_pixel_values,
                 background_pixel_values,
-                mask_pixel_values,
+                mask_pixel_values if not calculate_noise_latents_only else None,
                 mask_reft_len,
                 mode,
-                y_ref if start != 0 else None,
+                y_ref if start > 0 and not calculate_noise_latents_only else None,
                 calculate_noise_latents_only,
             )
             # First iteration
             if start == 0:
-                latents, condition, pose_latents, y_ref = latents_outputs
+                latents, condition, pose_latents, y_ref, mask_pixel_values = latents_outputs
             # Second iteration
             elif start > 0 and not calculate_noise_latents_only:
                 latents, condition = latents_outputs
