@@ -103,7 +103,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
     elif model_type == "MAGI-1-T2V-4.5B" or model_type == "4.5B":
         return {
             "model_id": "sand-ai/MAGI-1",
-            "repo_path": "4.5B",
+            "repo_path": "4.5B_base",
             "diffusers_config": {
                 "in_channels": 16,
                 "out_channels": 16,
@@ -121,7 +121,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
     elif model_type == "MAGI-1-T2V-24B" or model_type == "24B":
         return {
             "model_id": "sand-ai/MAGI-1",
-            "repo_path": "24B",
+            "repo_path": "24B_base",
             "diffusers_config": {
                 "in_channels": 16,
                 "out_channels": 16,
