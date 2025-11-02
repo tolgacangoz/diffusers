@@ -558,6 +558,7 @@ def get_args():
     )
     parser.add_argument("--output_path", type=str, required=True, help="Output directory for converted pipeline")
     parser.add_argument("--dtype", default="bf16", choices=["fp32", "fp16", "bf16", "none"], help="Data type for conversion")
+    parser.add_argument("--repo_id", type=str, default=None, help="Hugging Face Hub repo ID to push the converted model to")
     return parser.parse_args()
 
 
@@ -620,6 +621,6 @@ if __name__ == "__main__":
 
     # Save complete pipeline
     pipe.save_pretrained(args.output_path,
-                         repo_id="tolgacangoz/MAGI-1-T2V-4.5B-Diffusers",
+                         repo_id=args.repo_id,
                          push_to_hub=True,
                          safe_serialization=True, max_shard_size="5GB")
