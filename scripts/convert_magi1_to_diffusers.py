@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-import pathlib
 import shutil
 import tempfile
 
@@ -317,7 +316,6 @@ def convert_magi1_transformer_checkpoint(checkpoint_path, transformer_config_fil
     expected_keys = set(expected.keys())
     got_keys = set(converted_state_dict.keys())
     missing_target = sorted(list(expected_keys - got_keys))
-    unexpected_target = sorted(list(got_keys - expected_keys))
 
     shape_mismatches = []
     for k in sorted(list(expected_keys & got_keys)):
@@ -484,13 +482,8 @@ def get_args():
         ],
         help="Model type to convert",
     )
-    parser.add_argument(
-        "--checkpoint_path", type=str, default=None, help="Local MAGI-1 transformer checkpoint path (optional)"
-    )
-    parser.add_argument("--config_path", type=str, default=None, help="Optional JSON config for transformer")
     parser.add_argument("--output_path", type=str, required=True, help="Output directory for converted pipeline")
     parser.add_argument("--dtype", default="bf16", choices=["fp32", "fp16", "bf16", "none"], help="Data type for conversion")
-    parser.add_argument("--allow_partial", action="store_true", help="Allow partial/loose state dict loading")
     return parser.parse_args()
 
 
@@ -504,12 +497,7 @@ if __name__ == "__main__":
     args = get_args()
 
     # Convert transformer
-    if args.checkpoint_path is not None:
-        transformer = convert_magi1_transformer_checkpoint(
-            args.checkpoint_path, transformer_config_file=args.config_path, allow_partial=args.allow_partial
-        )
-    else:
-        transformer = convert_magi1_transformer(args.model_type)
+    transformer = convert_magi1_transformer(args.model_type)
 
     # Convert VAE
     vae = convert_magi1_vae()
@@ -553,4 +541,7 @@ if __name__ == "__main__":
         )
 
     # Save complete pipeline
-    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+    pipe.save_pretrained(args.output_path,
+                         repo_id="tolgacangoz/MAGI-1-T2V-4.5B-Diffusers",
+                         push_to_hub=True,
+                         safe_serialization=True, max_shard_size="5GB")

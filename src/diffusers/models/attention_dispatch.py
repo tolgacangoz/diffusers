@@ -2105,7 +2105,7 @@ def _magi_attention(
 
 @_AttentionBackendRegistry.register(
     AttentionBackendName.MAGI,
-    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape, _check_magi_attn_backend],
+    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],#, _check_magi_attn_backend],
 )
 def _magi_varlen_attention(
     query: torch.Tensor,
