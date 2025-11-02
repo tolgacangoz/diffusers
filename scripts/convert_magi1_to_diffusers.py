@@ -231,6 +231,12 @@ def convert_magi1_transformer(model_type):
     transformer_ckpt_dir = os.path.join(temp_dir, "transformer_checkpoint")
     os.makedirs(transformer_ckpt_dir, exist_ok=True)
 
+    # Determine checkpoint path based on model type (distill vs base)
+    if "distill" in model_type.lower():
+        weight_subpath = "inference_weight.distill"
+    else:
+        weight_subpath = "inference_weight"
+
     checkpoint_files = []
     shard_index = 1
     while True:
@@ -238,14 +244,14 @@ def convert_magi1_transformer(model_type):
             if shard_index == 1:
                 shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
                 shard_path = hf_hub_download(
-                    model_id, f"ckpt/magi/{repo_path}/inference_weight.distill/{shard_filename}"
+                    model_id, f"ckpt/magi/{repo_path}/{weight_subpath}/{shard_filename}"
                 )
                 checkpoint_files.append(shard_path)
                 shard_index += 1
             elif shard_index == 2:
                 shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
                 shard_path = hf_hub_download(
-                    model_id, f"ckpt/magi/{repo_path}/inference_weight.distill/{shard_filename}"
+                    model_id, f"ckpt/magi/{repo_path}/{weight_subpath}/{shard_filename}"
                 )
                 checkpoint_files.append(shard_path)
                 break
