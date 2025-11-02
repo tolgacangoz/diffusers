@@ -72,15 +72,15 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
             "model_id": "sand-ai/MAGI-1",
             "repo_path": "24B_distill",
             "diffusers_config": {
-                "in_channels": 16,
+                "in_channels": 32,  # 24B uses 32 channels (from patch_embedding)
                 "out_channels": 16,
                 "num_layers": 48,
-                "num_attention_heads": 32,
+                "num_attention_heads": 48,  # 6144 / 128 = 48 heads
                 "num_kv_heads": 8,
                 "attention_head_dim": 128,
                 "cross_attention_dim": 4096,
                 "freq_dim": 256,
-                "ffn_dim": 16384,
+                "ffn_dim": 32768,  # 24B uses wider FFN (from checkpoint)
                 "patch_size": (1, 2, 2),
                 "eps": 1e-6,
             },
@@ -108,15 +108,15 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
             "model_id": "sand-ai/MAGI-1",
             "repo_path": "24B_base",
             "diffusers_config": {
-                "in_channels": 16,
+                "in_channels": 32,  # 24B uses 32 channels (from patch_embedding)
                 "out_channels": 16,
                 "num_layers": 48,
-                "num_attention_heads": 32,
+                "num_attention_heads": 48,  # 6144 / 128 = 48 heads
                 "num_kv_heads": 8,
                 "attention_head_dim": 128,
                 "cross_attention_dim": 4096,
                 "freq_dim": 256,
-                "ffn_dim": 16384,
+                "ffn_dim": 32768,  # 24B uses wider FFN (from checkpoint)
                 "patch_size": (1, 2, 2),
                 "eps": 1e-6,
             },
@@ -162,15 +162,15 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
             "model_id": "sand-ai/MAGI-1",
             "repo_path": "24B_distill",  # Placeholder - update when I2V weights are released
             "diffusers_config": {
-                "in_channels": 16,
+                "in_channels": 32,  # 24B uses 32 channels
                 "out_channels": 16,
                 "num_layers": 48,
-                "num_attention_heads": 32,
+                "num_attention_heads": 48,  # 6144 / 128 = 48 heads
                 "num_kv_heads": 8,
                 "attention_head_dim": 128,
                 "cross_attention_dim": 4096,
                 "freq_dim": 256,
-                "ffn_dim": 16384,
+                "ffn_dim": 32768,  # 24B uses wider FFN
                 "patch_size": (1, 2, 2),
                 "eps": 1e-6,
             },
@@ -180,15 +180,15 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
             "model_id": "sand-ai/MAGI-1",
             "repo_path": "24B_base",
             "diffusers_config": {
-                "in_channels": 16,
+                "in_channels": 32,  # 24B uses 32 channels
                 "out_channels": 16,
                 "num_layers": 48,
-                "num_attention_heads": 32,
+                "num_attention_heads": 48,  # 6144 / 128 = 48 heads
                 "num_kv_heads": 8,
                 "attention_head_dim": 128,
                 "cross_attention_dim": 4096,
                 "freq_dim": 256,
-                "ffn_dim": 16384,
+                "ffn_dim": 32768,  # 24B uses wider FFN
                 "patch_size": (1, 2, 2),
                 "eps": 1e-6,
             },
@@ -234,15 +234,15 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
             "model_id": "sand-ai/MAGI-1",
             "repo_path": "24B_distill",  # Placeholder - update when V2V weights are released
             "diffusers_config": {
-                "in_channels": 16,
+                "in_channels": 32,  # 24B uses 32 channels
                 "out_channels": 16,
                 "num_layers": 48,
-                "num_attention_heads": 32,
+                "num_attention_heads": 48,  # 6144 / 128 = 48 heads
                 "num_kv_heads": 8,
                 "attention_head_dim": 128,
                 "cross_attention_dim": 4096,
                 "freq_dim": 256,
-                "ffn_dim": 16384,
+                "ffn_dim": 32768,  # 24B uses wider FFN
                 "patch_size": (1, 2, 2),
                 "eps": 1e-6,
             },
@@ -252,15 +252,15 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
             "model_id": "sand-ai/MAGI-1",
             "repo_path": "24B_base",
             "diffusers_config": {
-                "in_channels": 16,
+                "in_channels": 32,  # 24B uses 32 channels
                 "out_channels": 16,
                 "num_layers": 48,
-                "num_attention_heads": 32,
+                "num_attention_heads": 48,  # 6144 / 128 = 48 heads
                 "num_kv_heads": 8,
                 "attention_head_dim": 128,
                 "cross_attention_dim": 4096,
                 "freq_dim": 256,
-                "ffn_dim": 16384,
+                "ffn_dim": 32768,  # 24B uses wider FFN
                 "patch_size": (1, 2, 2),
                 "eps": 1e-6,
             },
