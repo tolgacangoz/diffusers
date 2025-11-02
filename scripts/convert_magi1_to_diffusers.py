@@ -80,7 +80,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "attention_head_dim": 128,
                 "cross_attention_dim": 4096,
                 "freq_dim": 256,
-                "ffn_dim": 32768,  # 24B uses wider FFN (from checkpoint)
+                "ffn_dim": 16384,  # matched to checkpoint FFN shape
                 "patch_size": (1, 2, 2),
                 "eps": 1e-6,
             },
@@ -116,7 +116,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "attention_head_dim": 128,
                 "cross_attention_dim": 4096,
                 "freq_dim": 256,
-                "ffn_dim": 32768,  # 24B uses wider FFN (from checkpoint)
+                "ffn_dim": 16384,  # matched to checkpoint FFN shape
                 "patch_size": (1, 2, 2),
                 "eps": 1e-6,
             },
@@ -170,7 +170,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "attention_head_dim": 128,
                 "cross_attention_dim": 4096,
                 "freq_dim": 256,
-                "ffn_dim": 32768,  # 24B uses wider FFN
+                "ffn_dim": 16384,  # matched to checkpoint FFN shape
                 "patch_size": (1, 2, 2),
                 "eps": 1e-6,
             },
@@ -188,7 +188,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "attention_head_dim": 128,
                 "cross_attention_dim": 4096,
                 "freq_dim": 256,
-                "ffn_dim": 32768,  # 24B uses wider FFN
+                "ffn_dim": 16384,  # matched to checkpoint FFN shape
                 "patch_size": (1, 2, 2),
                 "eps": 1e-6,
             },
@@ -242,7 +242,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "attention_head_dim": 128,
                 "cross_attention_dim": 4096,
                 "freq_dim": 256,
-                "ffn_dim": 32768,  # 24B uses wider FFN
+                "ffn_dim": 16384,  # matched to checkpoint FFN shape
                 "patch_size": (1, 2, 2),
                 "eps": 1e-6,
             },
