@@ -450,7 +450,7 @@ def load_magi1_transformer_checkpoint(checkpoint_path):
     return state_dict
 
 
-def convert_magi1_transformer_checkpoint(checkpoint_path, diffusers_config, dtype=None):
+def convert_magi1_transformer_checkpoint(checkpoint_path, diffusers_config):
     """
     Convert a MAGI-1 transformer checkpoint to a diffusers Magi1Transformer3DModel.
 
@@ -458,13 +458,16 @@ def convert_magi1_transformer_checkpoint(checkpoint_path, diffusers_config, dtyp
     with large models (4.5B-24B parameters). Follows diffusers best practices
     with strict=True and assign=True for direct tensor assignment.
 
+    Preserves original mixed precision from checkpoint:
+    - F32 for embeddings and output layers (numerical stability)
+    - BF16 for attention and MLP layers (memory efficiency)
+
     Args:
         checkpoint_path: Path to the MAGI-1 transformer checkpoint.
         diffusers_config: Diffusers config dict (from get_transformer_config).
-        dtype: Optional dtype for the model.
 
     Returns:
-        A diffusers Magi1Transformer3DModel model.
+        A diffusers Magi1Transformer3DModel model with original mixed precision.
     """
     checkpoint = load_magi1_transformer_checkpoint(checkpoint_path)
 
@@ -473,10 +476,12 @@ def convert_magi1_transformer_checkpoint(checkpoint_path, diffusers_config, dtyp
 
     converted_state_dict = convert_transformer_state_dict(checkpoint, transformer)
 
+    # Use assign=True to preserve original mixed precision dtypes from checkpoint
+    # Original MAGI-1 uses F32 for embeddings/output layers and BF16 for attention/MLP
     transformer.load_state_dict(converted_state_dict, strict=True, assign=True)
 
-    if dtype is not None:
-        transformer = transformer.to(dtype=dtype)
+    # Note: dtype parameter is intentionally NOT applied to preserve mixed precision
+    # If you need uniform dtype, convert after loading the pipeline
 
     return transformer
 
@@ -550,16 +555,20 @@ if __name__ == "__main__":
     vae = convert_magi1_vae()
 
     # Load text encoder and tokenizer
-    text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl", torch_dtype=torch.bfloat16)
+    # Apply dtype to text encoder if specified
+    if args.dtype != "none":
+        text_encoder_dtype = DTYPE_MAPPING[args.dtype]
+    else:
+        text_encoder_dtype = torch.bfloat16
+
+    text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl", torch_dtype=text_encoder_dtype)
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
 
     # Create scheduler with SD3-style shift
     scheduler = FlowMatchEulerDiscreteScheduler(shift=3.0)
 
-    # Apply dtype conversion if specified
-    if args.dtype != "none":
-        dtype = DTYPE_MAPPING[args.dtype]
-        transformer.to(dtype)
+    # Note: Transformer preserves original mixed precision (F32 embeddings + BF16 layers)
+    # VAE and text encoder use the specified dtype
 
     # Determine pipeline class based on model type
     if "I2V" in args.model_type:
