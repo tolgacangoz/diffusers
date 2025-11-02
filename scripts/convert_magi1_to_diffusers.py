@@ -238,30 +238,28 @@ def convert_magi1_transformer(model_type):
         weight_subpath = "inference_weight"
 
     checkpoint_files = []
-    shard_index = 1
-    while True:
+    last_exception = None
+
+    # Try to download both shards
+    for shard_index in [1, 2]:
         try:
-            if shard_index == 1:
-                shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
-                shard_path = hf_hub_download(
-                    model_id, f"ckpt/magi/{repo_path}/{weight_subpath}/{shard_filename}"
-                )
-                checkpoint_files.append(shard_path)
-                shard_index += 1
-            elif shard_index == 2:
-                shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
-                shard_path = hf_hub_download(
-                    model_id, f"ckpt/magi/{repo_path}/{weight_subpath}/{shard_filename}"
-                )
-                checkpoint_files.append(shard_path)
-                break
-            else:
-                break
-        except Exception:
+            shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
+            checkpoint_path = f"ckpt/magi/{repo_path}/{weight_subpath}/{shard_filename}"
+            print(f"Attempting to download: {model_id}/{checkpoint_path}")
+            shard_path = hf_hub_download(model_id, checkpoint_path)
+            checkpoint_files.append(shard_path)
+            print(f"Successfully downloaded shard {shard_index}")
+        except Exception as e:
+            last_exception = e
+            print(f"Failed to download shard {shard_index}: {e}")
             break
 
     if not checkpoint_files:
-        raise ValueError(f"No checkpoint files found for model type: {model_type}")
+        error_msg = f"No checkpoint files found for model type: {model_type}\n"
+        error_msg += f"Tried path: {model_id}/ckpt/magi/{repo_path}/{weight_subpath}/\n"
+        if last_exception:
+            error_msg += f"Last error: {last_exception}"
+        raise ValueError(error_msg)
 
     for i, shard_path in enumerate(checkpoint_files):
         dest_path = os.path.join(transformer_ckpt_dir, f"model-{i + 1:05d}-of-{len(checkpoint_files):05d}.safetensors")
