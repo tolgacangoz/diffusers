@@ -140,10 +140,46 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "eps": 1e-6,
             },
         }
+    elif model_type == "MAGI-1-I2V-4.5B":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "4.5B_base",
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 34,
+                "num_attention_heads": 24,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 12288,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
     elif model_type == "MAGI-1-I2V-24B-distill":
         return {
             "model_id": "sand-ai/MAGI-1",
             "repo_path": "24B_distill",  # Placeholder - update when I2V weights are released
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 48,
+                "num_attention_heads": 32,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 16384,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-I2V-24B":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "24B_base",
             "diffusers_config": {
                 "in_channels": 16,
                 "out_channels": 16,
@@ -176,10 +212,46 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "eps": 1e-6,
             },
         }
+    elif model_type == "MAGI-1-V2V-4.5B":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "4.5B_base",
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 34,
+                "num_attention_heads": 24,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 12288,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
     elif model_type == "MAGI-1-V2V-24B-distill":
         return {
             "model_id": "sand-ai/MAGI-1",
             "repo_path": "24B_distill",  # Placeholder - update when V2V weights are released
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 48,
+                "num_attention_heads": 32,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 16384,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-V2V-24B":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "24B_base",
             "diffusers_config": {
                 "in_channels": 16,
                 "out_channels": 16,
@@ -551,8 +623,12 @@ def get_args():
             "MAGI-1-T2V-24B",
             "MAGI-1-I2V-4.5B-distill",
             "MAGI-1-I2V-24B-distill",
+            "MAGI-1-I2V-4.5B",
+            "MAGI-1-I2V-24B",
             "MAGI-1-V2V-4.5B-distill",
             "MAGI-1-V2V-24B-distill",
+            "MAGI-1-V2V-4.5B",
+            "MAGI-1-V2V-24B",
         ],
         help="Model type to convert",
     )
