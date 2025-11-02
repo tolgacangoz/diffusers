@@ -280,6 +280,9 @@ def convert_magi1_vae():
         "ffn_dim": 4 * 1024,
         "num_layers": 24,
         "eps": 1e-6,
+        # Add compression ratios explicitly for pipeline compatibility
+        "temporal_compression_ratio": 4,  # patch_size[0]
+        "spatial_compression_ratio": 8,   # patch_size[1] or patch_size[2]
     }
 
     with init_empty_weights():
