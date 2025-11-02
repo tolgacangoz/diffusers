@@ -1,9 +1,8 @@
 import argparse
-import json
 import os
 import shutil
 import tempfile
-from typing import Dict, Any
+from typing import Any, Dict
 
 import torch
 from accelerate import init_empty_weights
@@ -354,7 +353,7 @@ def convert_magi1_vae():
         "eps": 1e-6,
         # Add compression ratios explicitly for pipeline compatibility
         "temporal_compression_ratio": 4,  # patch_size[0]
-        "spatial_compression_ratio": 8,   # patch_size[1] or patch_size[2]
+        "spatial_compression_ratio": 8,  # patch_size[1] or patch_size[2]
     }
 
     with init_empty_weights():
@@ -567,22 +566,50 @@ def convert_transformer_state_dict(checkpoint, transformer):
         block_prefix = f"blocks.{i}"
 
         # Self-attention (attn1)
-        converted_state_dict[f"{block_prefix}.norm1.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight"]
-        converted_state_dict[f"{block_prefix}.norm1.bias"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias"]
-        converted_state_dict[f"{block_prefix}.attn1.to_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.q.weight"]
-        converted_state_dict[f"{block_prefix}.attn1.to_k.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.k.weight"]
-        converted_state_dict[f"{block_prefix}.attn1.to_v.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.v.weight"]
-        converted_state_dict[f"{block_prefix}.attn1.norm_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm.weight"]
-        converted_state_dict[f"{block_prefix}.attn1.norm_q.bias"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm.bias"]
-        converted_state_dict[f"{block_prefix}.attn1.norm_k.weight"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm.weight"]
-        converted_state_dict[f"{block_prefix}.attn1.norm_k.bias"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm.bias"]
+        converted_state_dict[f"{block_prefix}.norm1.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.norm1.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.to_q.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.q.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.to_k.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.k.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.to_v.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.v.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.norm_q.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.q_layernorm.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.norm_q.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.q_layernorm.bias"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.norm_k.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.k_layernorm.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.norm_k.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.k_layernorm.bias"
+        ]
 
         # Cross-attention (attn2)
-        converted_state_dict[f"{block_prefix}.attn2.to_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.qx.weight"]
-        converted_state_dict[f"{block_prefix}.attn2.norm_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm_xattn.weight"]
-        converted_state_dict[f"{block_prefix}.attn2.norm_q.bias"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm_xattn.bias"]
-        converted_state_dict[f"{block_prefix}.attn2.norm_k.weight"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm_xattn.weight"]
-        converted_state_dict[f"{block_prefix}.attn2.norm_k.bias"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm_xattn.bias"]
+        converted_state_dict[f"{block_prefix}.attn2.to_q.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.qx.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn2.norm_q.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.q_layernorm_xattn.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn2.norm_q.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.q_layernorm_xattn.bias"
+        ]
+        converted_state_dict[f"{block_prefix}.attn2.norm_k.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.k_layernorm_xattn.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn2.norm_k.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.k_layernorm_xattn.bias"
+        ]
 
         # Split KV for cross-attention
         kv = checkpoint[f"{layer_prefix}.self_attention.linear_kv_xattn.weight"]
@@ -591,21 +618,29 @@ def convert_transformer_state_dict(checkpoint, transformer):
         converted_state_dict[f"{block_prefix}.attn2.to_v.weight"] = v
 
         # Combined projection for both attentions
-        converted_state_dict[f"{block_prefix}.attn_proj.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_proj.weight"]
+        converted_state_dict[f"{block_prefix}.attn_proj.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_proj.weight"
+        ]
         converted_state_dict[f"{block_prefix}.norm2.weight"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.weight"]
         converted_state_dict[f"{block_prefix}.norm2.bias"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.bias"]
 
         # MLP
         converted_state_dict[f"{block_prefix}.norm3.weight"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.weight"]
         converted_state_dict[f"{block_prefix}.norm3.bias"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.bias"]
-        converted_state_dict[f"{block_prefix}.ffn.net.0.proj.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc1.weight"]
+        converted_state_dict[f"{block_prefix}.ffn.net.0.proj.weight"] = checkpoint[
+            f"{layer_prefix}.mlp.linear_fc1.weight"
+        ]
         converted_state_dict[f"{block_prefix}.ffn.net.2.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.weight"]
         converted_state_dict[f"{block_prefix}.norm4.weight"] = checkpoint[f"{layer_prefix}.mlp_post_norm.weight"]
         converted_state_dict[f"{block_prefix}.norm4.bias"] = checkpoint[f"{layer_prefix}.mlp_post_norm.bias"]
 
         # Ada LayerNorm modulation
-        converted_state_dict[f"{block_prefix}.ada_modulate_layer.1.weight"] = checkpoint[f"{layer_prefix}.ada_modulate_layer.proj.0.weight"]
-        converted_state_dict[f"{block_prefix}.ada_modulate_layer.1.bias"] = checkpoint[f"{layer_prefix}.ada_modulate_layer.proj.0.bias"]
+        converted_state_dict[f"{block_prefix}.ada_modulate_layer.1.weight"] = checkpoint[
+            f"{layer_prefix}.ada_modulate_layer.proj.0.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.ada_modulate_layer.1.bias"] = checkpoint[
+            f"{layer_prefix}.ada_modulate_layer.proj.0.bias"
+        ]
 
     return converted_state_dict
 
@@ -633,8 +668,12 @@ def get_args():
         help="Model type to convert",
     )
     parser.add_argument("--output_path", type=str, required=True, help="Output directory for converted pipeline")
-    parser.add_argument("--dtype", default="bf16", choices=["fp32", "fp16", "bf16", "none"], help="Data type for conversion")
-    parser.add_argument("--repo_id", type=str, default=None, help="Hugging Face Hub repo ID to push the converted model to")
+    parser.add_argument(
+        "--dtype", default="bf16", choices=["fp32", "fp16", "bf16", "none"], help="Data type for conversion"
+    )
+    parser.add_argument(
+        "--repo_id", type=str, default=None, help="Hugging Face Hub repo ID to push the converted model to"
+    )
     return parser.parse_args()
 
 
@@ -698,7 +737,6 @@ if __name__ == "__main__":
         )
 
     # Save complete pipeline
-    pipe.save_pretrained(args.output_path,
-                         repo_id=args.repo_id,
-                         push_to_hub=True,
-                         safe_serialization=True, max_shard_size="5GB")
+    pipe.save_pretrained(
+        args.output_path, repo_id=args.repo_id, push_to_hub=True, safe_serialization=True, max_shard_size="5GB"
+    )
