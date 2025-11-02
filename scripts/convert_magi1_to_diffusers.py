@@ -297,19 +297,65 @@ def convert_magi1_transformer(model_type):
     checkpoint_files = []
     last_exception = None
 
-    # Try to download both shards
-    for shard_index in [1, 2]:
-        try:
-            shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
-            checkpoint_path = f"ckpt/magi/{repo_path}/{weight_subpath}/{shard_filename}"
-            print(f"Attempting to download: {model_id}/{checkpoint_path}")
-            shard_path = hf_hub_download(model_id, checkpoint_path)
-            checkpoint_files.append(shard_path)
-            print(f"Successfully downloaded shard {shard_index}")
-        except Exception as e:
-            last_exception = e
-            print(f"Failed to download shard {shard_index}: {e}")
-            break
+    # Try to download the index file first to determine number of shards
+    index_path = f"ckpt/magi/{repo_path}/{weight_subpath}/model.safetensors.index.json"
+    try:
+        print(f"Attempting to download index: {model_id}/{index_path}")
+        index_file = hf_hub_download(model_id, index_path)
+        import json
+        with open(index_file) as f:
+            index_data = json.load(f)
+
+        # Extract number of shards from index metadata
+        num_shards = None
+        if "metadata" in index_data and "total_size" in index_data["metadata"]:
+            # Count unique shard files mentioned in weight_map
+            weight_map = index_data.get("weight_map", {})
+            shard_files = set(weight_map.values())
+            num_shards = len(shard_files)
+            print(f"Detected {num_shards} shards from index file")
+    except Exception as e:
+        print(f"Could not download index file, will try common shard counts: {e}")
+        num_shards = None
+
+    # If we found the index, download the exact shards; otherwise try common patterns
+    if num_shards:
+        for shard_index in range(1, num_shards + 1):
+            try:
+                shard_filename = f"model-{shard_index:05d}-of-{num_shards:05d}.safetensors"
+                checkpoint_path = f"ckpt/magi/{repo_path}/{weight_subpath}/{shard_filename}"
+                print(f"Downloading shard {shard_index}/{num_shards}: {checkpoint_path}")
+                shard_path = hf_hub_download(model_id, checkpoint_path)
+                checkpoint_files.append(shard_path)
+            except Exception as e:
+                last_exception = e
+                print(f"Failed to download shard {shard_index}: {e}")
+                break
+    else:
+        # Try common shard counts: 1 (quant), 2 (4.5B), 3 (24B quant), 6 (24B)
+        for num_shards in [1, 2, 3, 6]:
+            checkpoint_files = []
+            success = True
+            for shard_index in range(1, num_shards + 1):
+                try:
+                    if num_shards == 1:
+                        shard_filename = "model.safetensors"
+                    else:
+                        shard_filename = f"model-{shard_index:05d}-of-{num_shards:05d}.safetensors"
+                    checkpoint_path = f"ckpt/magi/{repo_path}/{weight_subpath}/{shard_filename}"
+                    print(f"Trying {num_shards}-shard pattern: {checkpoint_path}")
+                    shard_path = hf_hub_download(model_id, checkpoint_path)
+                    checkpoint_files.append(shard_path)
+                except Exception as e:
+                    last_exception = e
+                    success = False
+                    break
+
+            if success and checkpoint_files:
+                print(f"Successfully downloaded all {num_shards} shards")
+                break
+            else:
+                checkpoint_files = []
 
     if not checkpoint_files:
         error_msg = f"No checkpoint files found for model type: {model_type}\n"
