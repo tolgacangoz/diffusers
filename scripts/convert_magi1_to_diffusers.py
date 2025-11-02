@@ -22,36 +22,22 @@ from diffusers import (
 )
 
 
-# Global key mapping dictionary for MAGI-1 transformer conversion
-TRANSFORMER_KEYS_RENAME_DICT = {
-    # Top-level embeddings
-    "x_embedder": "patch_embedding",
-    "t_embedder.mlp.0": "condition_embedder.time_embedder.linear_1",
-    "t_embedder.mlp.2": "condition_embedder.time_embedder.linear_2",
-    "y_embedder.y_proj_xattn.0": "condition_embedder.text_embedder.y_proj_xattn.0",
-    "y_embedder.y_proj_adaln.0": "condition_embedder.text_embedder.y_proj_adaln",
-    # Output layers
-    "videodit_blocks.final_layernorm": "norm_out",
-    "final_linear.linear": "proj_out",
-    # Per-layer attention and MLP components
-    "videodit_blocks.layers": "blocks",
-    "self_attention.linear_qkv.layer_norm": "norm1",
-    "self_attention.linear_qkv.q": "attn1.to_q",
-    "self_attention.linear_qkv.k": "attn1.to_k",
-    "self_attention.linear_qkv.v": "attn1.to_v",
-    "self_attention.q_layernorm": "attn1.norm_q",
-    "self_attention.k_layernorm": "attn1.norm_k",
-    "self_attention.linear_qkv.qx": "attn2.to_q",
-    "self_attention.q_layernorm_xattn": "attn2.norm_q",
-    "self_attention.k_layernorm_xattn": "attn2.norm_k",
-    "self_attention.linear_proj": "attn_proj",
-    "self_attn_post_norm": "norm2",
-    "mlp.layer_norm": "norm3",
-    "mlp.linear_fc1": "ffn.net.0.proj",
-    "mlp.linear_fc2": "ffn.net.2",
-    "mlp_post_norm": "norm4",
-    "ada_modulate_layer.proj.0": "ada_modulate_layer.1",
-}
+# Simple top-level mappings for MAGI-1 transformer conversion
+SIMPLE_TRANSFORMER_MAPPINGS = [
+    ("x_embedder.weight", "patch_embedding.weight"),
+    ("t_embedder.mlp.0.weight", "condition_embedder.time_embedder.linear_1.weight"),
+    ("t_embedder.mlp.0.bias", "condition_embedder.time_embedder.linear_1.bias"),
+    ("t_embedder.mlp.2.weight", "condition_embedder.time_embedder.linear_2.weight"),
+    ("t_embedder.mlp.2.bias", "condition_embedder.time_embedder.linear_2.bias"),
+    ("y_embedder.y_proj_xattn.0.weight", "condition_embedder.text_embedder.y_proj_xattn.0.weight"),
+    ("y_embedder.y_proj_xattn.0.bias", "condition_embedder.text_embedder.y_proj_xattn.0.bias"),
+    ("y_embedder.y_proj_adaln.0.weight", "condition_embedder.text_embedder.y_proj_adaln.weight"),
+    ("y_embedder.y_proj_adaln.0.bias", "condition_embedder.text_embedder.y_proj_adaln.bias"),
+    ("videodit_blocks.final_layernorm.weight", "norm_out.weight"),
+    ("videodit_blocks.final_layernorm.bias", "norm_out.bias"),
+    ("final_linear.linear.weight", "proj_out.weight"),
+    ("rope.bands", "rope.bands"),
+]
 
 
 def get_transformer_config(model_type: str) -> Dict[str, Any]:
@@ -488,28 +474,63 @@ def convert_transformer_state_dict(checkpoint, transformer):
     """
     Convert MAGI-1 transformer state dict to diffusers format.
 
-    Uses global TRANSFORMER_KEYS_RENAME_DICT for string replacements,
-    similar to Wan's conversion approach.
+    Uses explicit key mappings for clarity and correctness.
     """
     converted_state_dict = {}
 
-    for key in checkpoint.keys():
-        new_key = key
+    # Simple top-level mappings
+    for src, dst in SIMPLE_TRANSFORMER_MAPPINGS:
+        if src in checkpoint:
+            converted_state_dict[dst] = checkpoint[src]
 
-        # Apply string replacements from the global dictionary
-        for old_pattern, new_pattern in TRANSFORMER_KEYS_RENAME_DICT.items():
-            new_key = new_key.replace(old_pattern, new_pattern)
+    # Determine number of layers
+    num_layers = transformer.config.num_layers
 
-        # Special handling for split KV weights in cross-attention
-        if "self_attention.linear_kv_xattn.weight" in key:
-            # Extract layer index
-            layer_idx = key.split(".")[2]  # videodit_blocks.layers.{i}.self_attention...
-            kv = checkpoint[key]
-            k, v = kv.chunk(2, dim=0)
-            converted_state_dict[f"blocks.{layer_idx}.attn2.to_k.weight"] = k
-            converted_state_dict[f"blocks.{layer_idx}.attn2.to_v.weight"] = v
-        else:
-            converted_state_dict[new_key] = checkpoint[key]
+    # Per-layer mappings
+    for i in range(num_layers):
+        layer_prefix = f"videodit_blocks.layers.{i}"
+        block_prefix = f"blocks.{i}"
+
+        # Self-attention (attn1)
+        converted_state_dict[f"{block_prefix}.norm1.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight"]
+        converted_state_dict[f"{block_prefix}.norm1.bias"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias"]
+        converted_state_dict[f"{block_prefix}.attn1.to_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.q.weight"]
+        converted_state_dict[f"{block_prefix}.attn1.to_k.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.k.weight"]
+        converted_state_dict[f"{block_prefix}.attn1.to_v.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.v.weight"]
+        converted_state_dict[f"{block_prefix}.attn1.norm_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm.weight"]
+        converted_state_dict[f"{block_prefix}.attn1.norm_q.bias"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm.bias"]
+        converted_state_dict[f"{block_prefix}.attn1.norm_k.weight"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm.weight"]
+        converted_state_dict[f"{block_prefix}.attn1.norm_k.bias"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm.bias"]
+
+        # Cross-attention (attn2)
+        converted_state_dict[f"{block_prefix}.attn2.to_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_qkv.qx.weight"]
+        converted_state_dict[f"{block_prefix}.attn2.norm_q.weight"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm_xattn.weight"]
+        converted_state_dict[f"{block_prefix}.attn2.norm_q.bias"] = checkpoint[f"{layer_prefix}.self_attention.q_layernorm_xattn.bias"]
+        converted_state_dict[f"{block_prefix}.attn2.norm_k.weight"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm_xattn.weight"]
+        converted_state_dict[f"{block_prefix}.attn2.norm_k.bias"] = checkpoint[f"{layer_prefix}.self_attention.k_layernorm_xattn.bias"]
+
+        # Split KV for cross-attention
+        kv = checkpoint[f"{layer_prefix}.self_attention.linear_kv_xattn.weight"]
+        k, v = kv.chunk(2, dim=0)
+        converted_state_dict[f"{block_prefix}.attn2.to_k.weight"] = k
+        converted_state_dict[f"{block_prefix}.attn2.to_v.weight"] = v
+
+        # Combined projection for both attentions
+        converted_state_dict[f"{block_prefix}.attn_proj.weight"] = checkpoint[f"{layer_prefix}.self_attention.linear_proj.weight"]
+        converted_state_dict[f"{block_prefix}.norm2.weight"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.weight"]
+        converted_state_dict[f"{block_prefix}.norm2.bias"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.bias"]
+
+        # MLP
+        converted_state_dict[f"{block_prefix}.norm3.weight"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.weight"]
+        converted_state_dict[f"{block_prefix}.norm3.bias"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.bias"]
+        converted_state_dict[f"{block_prefix}.ffn.net.0.proj.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc1.weight"]
+        converted_state_dict[f"{block_prefix}.ffn.net.2.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.weight"]
+        converted_state_dict[f"{block_prefix}.norm4.weight"] = checkpoint[f"{layer_prefix}.mlp_post_norm.weight"]
+        converted_state_dict[f"{block_prefix}.norm4.bias"] = checkpoint[f"{layer_prefix}.mlp_post_norm.bias"]
+
+        # Ada LayerNorm modulation
+        converted_state_dict[f"{block_prefix}.ada_modulate_layer.1.weight"] = checkpoint[f"{layer_prefix}.ada_modulate_layer.proj.0.weight"]
+        converted_state_dict[f"{block_prefix}.ada_modulate_layer.1.bias"] = checkpoint[f"{layer_prefix}.ada_modulate_layer.proj.0.bias"]
 
     return converted_state_dict
 
