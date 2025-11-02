@@ -10,7 +10,7 @@ from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from safetensors.torch import load_file
-from transformers import AutoTokenizer, UMT5EncoderModel
+from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKLMagi1,
@@ -660,8 +660,10 @@ if __name__ == "__main__":
     else:
         text_encoder_dtype = torch.bfloat16
 
-    text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl", torch_dtype=text_encoder_dtype)
-    tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
+    text_encoder = T5EncoderModel.from_pretrained(
+        "sand-ai/MAGI-1", subfolder="ckpt/t5/t5-v1_1-xxl", torch_dtype=text_encoder_dtype
+    )
+    tokenizer = AutoTokenizer.from_pretrained("sand-ai/MAGI-1", subfolder="ckpt/t5/t5-v1_1-xxl")
 
     # Create scheduler with SD3-style shift
     scheduler = FlowMatchEulerDiscreteScheduler(shift=3.0)
