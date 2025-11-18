@@ -1977,11 +1977,13 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                     "time_projection.1.diff_b"
                 )
 
-        if any("head.head" in k for k in state_dict):
-            converted_state_dict["proj_out.lora_A.weight"] = original_state_dict.pop(
-                f"head.head.{lora_down_key}.weight"
-            )
-            converted_state_dict["proj_out.lora_B.weight"] = original_state_dict.pop(f"head.head.{lora_up_key}.weight")
+        if any("head.head" in k for k in original_state_dict):
+            key_A = f"head.head.{lora_down_key}.weight"
+            if key_A in original_state_dict:
+                converted_state_dict["proj_out.lora_A.weight"] = original_state_dict.pop(key_A)
+            key_B = f"head.head.{lora_up_key}.weight"
+            if key_B in original_state_dict:
+                converted_state_dict["proj_out.lora_B.weight"] = original_state_dict.pop(key_B)
             if "head.head.diff_b" in original_state_dict:
                 converted_state_dict["proj_out.lora_B.bias"] = original_state_dict.pop("head.head.diff_b")
 
@@ -1994,12 +1996,15 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                         if text_time == "text_embedding"
                         else "condition_embedder.time_embedder"
                     )
-                    if any(f"{text_time}.{b_n}" in k for k in original_state_dict):
+                    original_down = f"{text_time}.{b_n}.{lora_down_key}.weight"
+                    original_up = f"{text_time}.{b_n}.{lora_up_key}.weight"
+                    if original_down in original_state_dict:
                         converted_state_dict[f"{diffusers_name}.linear_{diffusers_b_n}.lora_A.weight"] = (
-                            original_state_dict.pop(f"{text_time}.{b_n}.{lora_down_key}.weight")
+                            original_state_dict.pop(original_down)
                         )
+                    if original_up in original_state_dict:
                         converted_state_dict[f"{diffusers_name}.linear_{diffusers_b_n}.lora_B.weight"] = (
-                            original_state_dict.pop(f"{text_time}.{b_n}.{lora_up_key}.weight")
+                            original_state_dict.pop(original_up)
                         )
                     if f"{text_time}.{b_n}.diff_b" in original_state_dict:
                         converted_state_dict[f"{diffusers_name}.linear_{diffusers_b_n}.lora_B.bias"] = (
