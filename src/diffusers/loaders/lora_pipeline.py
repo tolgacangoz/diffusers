@@ -5175,7 +5175,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         transformer: torch.nn.Module,
         state_dict,
     ):
-        if transformer.config.image_dim is None:
+        if transformer.config.get("image_dim") is None:
             return state_dict
 
         target_device = transformer.device
