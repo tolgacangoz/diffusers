@@ -56,6 +56,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "AuraFlowTransformer2DModel": lambda model_cls, weights: weights,
     "Lumina2Transformer2DModel": lambda model_cls, weights: weights,
     "WanTransformer3DModel": lambda model_cls, weights: weights,
+    "WanS2VTransformer3DModel": lambda model_cls, weights: weights,
     "CogView4Transformer2DModel": lambda model_cls, weights: weights,
     "HiDreamImageTransformer2DModel": lambda model_cls, weights: weights,
     "HunyuanVideoFramepackTransformer3DModel": lambda model_cls, weights: weights,
