@@ -524,6 +524,13 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
                 latent_model_input = latent_model_input.unsqueeze(2)
                 latent_model_input_list = list(latent_model_input.unbind(dim=0))
 
+                print(f"latent_model_input_list.shape = {[x.shape for x in latent_model_input_list]}")
+                print(f"latent_model_input_list.dtype = {latent_model_input_list[0].dtype}")
+                print(f"timestep_model_input = {timestep_model_input.shape}",
+                      f"timestep_model_input.dtype = {timestep_model_input.dtype}")
+                print(f"prompt_embeds_model_input = {prompt_embeds_model_input.shape}",
+                      f"prompt_embeds_model_input.dtype = {prompt_embeds_model_input.dtype}")
+
                 model_out_list = self.transformer(
                     latent_model_input_list, timestep_model_input, prompt_embeds_model_input, return_dict=False
                 )[0]
@@ -581,7 +588,7 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
         else:
             latents = latents.to(self.vae.dtype)
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
-
+            print(f"latents.shape = {latents.shape}", f"latents.dtype = {latents.dtype}")
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 
