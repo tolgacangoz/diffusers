@@ -528,8 +528,8 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
                 print(f"latent_model_input_list.dtype = {latent_model_input_list[0].dtype}")
                 print(f"timestep_model_input = {timestep_model_input.shape}",
                       f"timestep_model_input.dtype = {timestep_model_input.dtype}")
-                print(f"prompt_embeds_model_input = {prompt_embeds_model_input.shape}",
-                      f"prompt_embeds_model_input.dtype = {prompt_embeds_model_input.dtype}")
+                print(f"prompt_embeds_model_input = {[x.shape for x in prompt_embeds_model_input]}",
+                      f"prompt_embeds_model_input.dtype = {[x.dtype for x in prompt_embeds_model_input]}")
 
                 model_out_list = self.transformer(
                     latent_model_input_list, timestep_model_input, prompt_embeds_model_input, return_dict=False
