@@ -442,6 +442,12 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
                 device=device,
                 max_sequence_length=max_sequence_length,
             )
+        print("prompt_embeds", prompt_embeds.shape)
+        print("negative_prompt_embeds", negative_prompt_embeds.shape)
+        # Save the tensors with safetensors:
+        from safetensors.torch import save_file
+        save_file(prompt_embeds[0], "prompt_embeds.safetensors")
+        save_file(negative_prompt_embeds[0], "negative_prompt_embeds.safetensors")
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.in_channels
