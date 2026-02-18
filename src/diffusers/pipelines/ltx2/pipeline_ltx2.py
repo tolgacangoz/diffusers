@@ -1111,14 +1111,16 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 timestep = t.expand(latent_model_input.shape[0])
 
                 with self.transformer.cache_context("cond_uncond"):
-                    print("latent_model_input.shape", latent_model_input.shape)
-                    print("audio_latent_model_input.shape", audio_latent_model_input.shape)
-                    print("connector_prompt_embeds.shape", connector_prompt_embeds.shape)
-                    print("connector_audio_prompt_embeds.shape", connector_audio_prompt_embeds.shape)
-                    print("timestep.shape", timestep.shape)
-                    print("connector_attention_mask.shape", connector_attention_mask.shape)
-                    print("video_coords.shape", video_coords.shape)
-                    print("audio_coords.shape", audio_coords.shape)
+                    if i == 0:
+                        print()
+                        print("latent_model_input.shape", latent_model_input.shape)
+                        print("audio_latent_model_input.shape", audio_latent_model_input.shape)
+                        print("connector_prompt_embeds.shape", connector_prompt_embeds.shape)
+                        print("connector_audio_prompt_embeds.shape", connector_audio_prompt_embeds.shape)
+                        print("timestep.shape", timestep.shape)
+                        print("connector_attention_mask.shape", connector_attention_mask.shape)
+                        print("video_coords.shape", video_coords.shape)
+                        print("audio_coords.shape", audio_coords.shape)
                     noise_pred_video, noise_pred_audio = self.transformer(
                         hidden_states=latent_model_input,
                         audio_hidden_states=audio_latent_model_input,
@@ -1226,7 +1228,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             latents = latents.to(self.vae.dtype)
             print()
             print("vae's latents.shape", latents.shape)
-            print("vae's timestep.shape", timestep.shape)
+            # print("vae's timestep.shape", timestep.shape)
             video = self.vae.decode(latents, timestep, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
