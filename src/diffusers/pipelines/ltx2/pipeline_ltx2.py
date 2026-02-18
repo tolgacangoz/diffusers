@@ -382,6 +382,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         text_input_ids = text_input_ids.to(device)
         prompt_attention_mask = prompt_attention_mask.to(device)
 
+        print()
+        print("text_encoder's text_input_ids.shape", text_input_ids.shape)
+        print("text_encoder's prompt_attention_mask.shape", prompt_attention_mask.shape)
         text_encoder_outputs = self.text_encoder(
             input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
         )
@@ -961,6 +964,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
         additive_attention_mask = (1 - prompt_attention_mask.to(prompt_embeds.dtype)) * -1000000.0
+        print()
+        print("connectors's prompt_embeds.shape", prompt_embeds.shape)
+        print("connectors's additive_attention_mask.shape", additive_attention_mask.shape)
         connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = self.connectors(
             prompt_embeds, additive_attention_mask, additive_mask=True
         )
@@ -1105,6 +1111,14 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 timestep = t.expand(latent_model_input.shape[0])
 
                 with self.transformer.cache_context("cond_uncond"):
+                    print("latent_model_input.shape", latent_model_input.shape)
+                    print("audio_latent_model_input.shape", audio_latent_model_input.shape)
+                    print("connector_prompt_embeds.shape", connector_prompt_embeds.shape)
+                    print("connector_audio_prompt_embeds.shape", connector_audio_prompt_embeds.shape)
+                    print("timestep.shape", timestep.shape)
+                    print("connector_attention_mask.shape", connector_attention_mask.shape)
+                    print("video_coords.shape", video_coords.shape)
+                    print("audio_coords.shape", audio_coords.shape)
                     noise_pred_video, noise_pred_audio = self.transformer(
                         hidden_states=latent_model_input,
                         audio_hidden_states=audio_latent_model_input,
@@ -1210,11 +1224,17 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
 
             latents = latents.to(self.vae.dtype)
+            print()
+            print("vae's latents.shape", latents.shape)
+            print("vae's timestep.shape", timestep.shape)
             video = self.vae.decode(latents, timestep, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
             audio_latents = audio_latents.to(self.audio_vae.dtype)
+            print()
+            print("audio_vae's latents.shape", audio_latents.shape)
             generated_mel_spectrograms = self.audio_vae.decode(audio_latents, return_dict=False)[0]
+            print("vocoder's generated_mel_spectrograms.shape", generated_mel_spectrograms.shape)
             audio = self.vocoder(generated_mel_spectrograms)
 
         # Offload all models
